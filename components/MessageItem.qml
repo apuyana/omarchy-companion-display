@@ -14,10 +14,15 @@ Rectangle {
   property color avatarColor: P.chatAvatar
   property color avatarTextColor: P.chatAvatarText
   property string fontFamily: "monospace"
+  property bool dismissable: false
+
+  signal dismissed()
 
   implicitHeight: content.implicitHeight + 28
   color: P.item
   radius: P.itemRadius
+
+  HoverHandler { id: hover }
 
   RowLayout {
     id: content
@@ -65,6 +70,29 @@ Rectangle {
           color: P.textMuted
           font.family: root.fontFamily
           font.pixelSize: 14
+        }
+        // Dismiss: shown on hover, also clears the notification on the phone.
+        Rectangle {
+          visible: root.dismissable && hover.hovered
+          Layout.preferredWidth: 28
+          Layout.preferredHeight: 28
+          radius: 14
+          color: dismissMouse.containsMouse ? P.track : "transparent"
+          Text {
+            anchors.centerIn: parent
+            text: "\u{F0156}"
+            color: dismissMouse.containsMouse ? P.textStrong : P.textMuted
+            font.family: root.fontFamily
+            font.pixelSize: 16
+          }
+          MouseArea {
+            id: dismissMouse
+            anchors.fill: parent
+            anchors.margins: -6
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.dismissed()
+          }
         }
       }
       Text {

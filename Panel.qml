@@ -100,6 +100,28 @@ Item {
     return l ? Math.round(l.percent * 100) : -1
   }
 
+  // Take tasks in turns from each status (blocked, in review, in progress) so
+  // a long list of one kind does not hide the others.
+  function pickIssues(issues, max) {
+    var groups = {}, order = []
+    for (var i = 0; i < issues.length; i++) {
+      var st = issues[i].status
+      if (!groups[st]) { groups[st] = []; order.push(st) }
+      groups[st].push(issues[i])
+    }
+    var picked = []
+    for (var round = 0; picked.length < max; round++) {
+      var added = false
+      for (var j = 0; j < order.length && picked.length < max; j++) {
+        if (round < groups[order[j]].length) { picked.push(groups[order[j]][round]); added = true }
+      }
+      if (!added) break
+    }
+    var rank = {}
+    for (var k = 0; k < order.length; k++) rank[order[k]] = k
+    return picked.sort(function (a, b) { return rank[a.status] - rank[b.status] })
+  }
+
   // ------------------------------------------------------------- media
 
   readonly property var player: {
@@ -141,6 +163,46 @@ Item {
     repeat: true
     running: true
     onTriggered: { root.shiftX = Math.round(Math.random() * 12 - 6); root.shiftY = Math.round(Math.random() * 12 - 6) }
+  }
+
+  // ------------------------------------------------------------ bar cover
+
+  // The Omarchy bar shows on every monitor. With hideBar, a black strip on the
+  // Overlay layer covers it on this monitor only, so nothing bright stays lit.
+  readonly property bool hideBar: config.hideBar === true
+  property string barPosition: "top"
+  FileView {
+    path: root.home + "/.config/omarchy/shell.json"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.barPosition = (JSON.parse(text()).bar || {}).position || "top" } catch (e) {}
+    }
+  }
+
+  PanelWindow {
+    id: barCover
+    readonly property bool horizontal: root.barPosition === "top" || root.barPosition === "bottom"
+    // The main window sits beside the bar's exclusive zone, so the gap between
+    // it and the screen edge is exactly the bar's thickness.
+    readonly property int thickness: !root.targetScreen ? 0 : (horizontal
+      ? root.targetScreen.height - window.height
+      : root.targetScreen.width - window.width)
+    screen: root.targetScreen
+    visible: root.hideBar && root.targetScreen !== null && thickness > 0
+    color: P.idleBackground
+    anchors {
+      top: root.barPosition !== "bottom"
+      bottom: root.barPosition !== "top"
+      left: root.barPosition !== "right"
+      right: root.barPosition !== "left"
+    }
+    implicitHeight: horizontal ? thickness : 0
+    implicitWidth: horizontal ? 0 : thickness
+    exclusionMode: ExclusionMode.Ignore
+    WlrLayershell.namespace: "omarchy-companion-display-bar-cover"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
   }
 
   // ------------------------------------------------------------ window
@@ -333,7 +395,7 @@ Item {
           }
 
           Repeater {
-            model: paperclipCard.pc && paperclipCard.pc.ok ? paperclipCard.pc.issues.slice(0, root.config.paperclip && root.config.paperclip.maxIssues ? root.config.paperclip.maxIssues : 4) : []
+            model: paperclipCard.pc && paperclipCard.pc.ok ? root.pickIssues(paperclipCard.pc.issues, root.config.paperclip && root.config.paperclip.maxIssues ? root.config.paperclip.maxIssues : 4) : []
             Rectangle {
               id: issueRow
               required property var modelData
@@ -427,6 +489,8 @@ Item {
               title: modelData.title
               meta: P.timeLabel(modelData.ts) + (modelData.count > 1 ? " · " + modelData.count : "")
               preview: root.privacy ? "" : modelData.text
+              dismissable: (modelData.keys || []).length > 0
+              onDismissed: feed.send("dismiss " + modelData.keys.join(" "))
             }
           }
           Item { Layout.fillHeight: true }
@@ -476,6 +540,8 @@ Item {
               meta: P.timeLabel(modelData.ts) + (modelData.source === "phone" ? " · " + modelData.app : "")
               subject: parts.subject
               preview: root.privacy ? "" : parts.preview
+              dismissable: (modelData.keys || []).length > 0
+              onDismissed: feed.send("dismiss " + modelData.keys.join(" "))
             }
           }
           Item { Layout.fillHeight: true }

@@ -4,7 +4,7 @@ An always-on companion display for a secondary (vertical) monitor on [Omarchy](h
 
 It turns a spare screen into a quiet, glanceable dashboard:
 
-- **Chats from your phone** via [KDE Connect](https://kdeconnect.kde.org/): WhatsApp, Telegram, Signal… grouped by chat with the latest message. They disappear when you read them on the phone.
+- **Chats from your phone** via [KDE Connect](https://kdeconnect.kde.org/): WhatsApp, Telegram, Signal… grouped by chat with the latest message. They disappear when you read them on the phone; hover one and press ✕ to dismiss it on the phone too.
 - **Mail** built from notifications: desktop mail clients (e.g. BlueMail) and mail apps on the phone (Outlook, Gmail) via KDE Connect. No credentials needed. Click the counter to mark everything as seen.
 - **Other phone notifications**, counted per app.
 - **Media player** (any MPRIS player: Spotify, the phone through KDE Connect, browsers): a compact bar at the bottom that expands to a full player.
@@ -45,6 +45,7 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | `locale` | `es_CO` | Locale for the date |
 | `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode |
 | `privacy` | `false` | Hide message and mail text, show only senders and counts |
+| `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip (burn-in) |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
 | `mailApps` | `["BlueMail"]` | Desktop apps whose notifications count as mail |
 | `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |

@@ -3,6 +3,7 @@
   "locale": "es_CO",
   "idleSeconds": 300,
   "privacy": false,
+  "hideBar": false,
   "chatApps": [
     "WhatsApp",
     "WhatsApp Business",

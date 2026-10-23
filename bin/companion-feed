@@ -5,8 +5,10 @@ Collects phone notifications from KDE Connect, mail notifications posted on
 the desktop and, optionally, task status from a Paperclip instance, and prints the combined state as one JSON object per line on
 stdout every time it changes. Reads simple commands from stdin:
 
-    seen        mark every mail as seen (resets the "new" count)
-    refresh     re-read everything now
+    seen              mark every mail as seen (resets the "new" count)
+    refresh           re-read everything now
+    dismiss KEY...    dismiss phone notifications ("<device>/<id>") or
+                      desktop mails ("mail:<id>")
 
 Only depends on the Python standard library and PyGObject (Gio), which ship
 with Omarchy.
@@ -169,6 +171,7 @@ class Feed:
                     "text": str(p.get("text", "")),
                     "group": str(p.get("groupName", "")),
                     "isGroup": bool(p.get("isGroupConversation", False)),
+                    "dismissable": bool(p.get("dismissable", True)),
                     "ts": ts,
                 })
         self.first_seen = {k: v for k, v in self.first_seen.items() if k in live}
@@ -323,8 +326,11 @@ class Feed:
                 title = n["group"] if n["isGroup"] and n["group"] else n["title"]
                 chat = chats.setdefault((n["app"], title), {
                     "app": n["app"], "title": title, "text": "", "count": 0, "ts": 0,
+                    "keys": [],
                 })
                 chat["count"] += 1
+                if n["dismissable"]:
+                    chat["keys"].append(n["key"])
                 if n["ts"] >= chat["ts"]:
                     chat["ts"] = n["ts"]
                     sender = n["title"] if n["isGroup"] and n["title"] != title else ""
@@ -333,6 +339,7 @@ class Feed:
                 mail.append({
                     "app": n["app"], "summary": n["title"], "body": n["text"],
                     "ts": n["ts"], "source": "phone",
+                    "keys": [n["key"]] if n["dismissable"] else [],
                 })
             else:
                 apps[n["app"]] = apps.get(n["app"], 0) + 1
@@ -340,6 +347,8 @@ class Feed:
         mail.sort(key=lambda m: m["ts"], reverse=True)
         for m in mail:
             m["new"] = m["ts"] > self.seen_at
+            if m["source"] == "desktop":
+                m["keys"] = ["mail:%r" % m["ts"]]
         return {
             "phone": self.phone,
             "chats": sorted(chats.values(), key=lambda c: c["ts"], reverse=True),
@@ -381,7 +390,29 @@ class Feed:
             self.emit()
         elif cmd == "refresh":
             self.refresh()
+        elif cmd.startswith("dismiss "):
+            self.dismiss(cmd.split()[1:])
         return False
+
+    def dismiss(self, keys):
+        mails = {k[5:] for k in keys if k.startswith("mail:")}
+        if mails:
+            self.desktop_mail = [m for m in self.desktop_mail if "%r" % m["ts"] not in mails]
+            self.save_mail_state()
+        for key in keys:
+            if key.startswith("mail:") or "/" not in key:
+                continue
+            dev, nid = key.split("/", 1)
+            try:
+                self.bus.call_sync(
+                    KDECONNECT, "/modules/kdeconnect/devices/%s/notifications/%s" % (dev, nid),
+                    NOTIF_ITEM_IFACE, "dismiss", None, None,
+                    Gio.DBusCallFlags.NONE, 3000, None,
+                )
+            except GLib.Error:
+                pass
+        self.schedule_refresh()
+        self.emit()
 
     def read_stdin(self):
         for line in sys.stdin:
