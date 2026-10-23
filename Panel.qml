@@ -95,6 +95,27 @@ Item {
     onFileChanged: reload()
     onLoaded: { try { root.claude = JSON.parse(text()) } catch (e) { root.claude = null } }
   }
+  function claudeWorking() {
+    var list = root.feedState.claude || [], n = 0
+    for (var i = 0; i < list.length; i++) if (list[i].status === "busy") n++
+    return n
+  }
+  // A session that went idle in the last few minutes has just finished and
+  // is waiting for you.
+  readonly property int claudeDoneWindow: (root.config.claude && root.config.claude.doneMinutes ? root.config.claude.doneMinutes : 15) * 60
+  function claudeState(sess) {
+    var age = clockTick.now.getTime() / 1000 - sess.since
+    if (sess.status === "busy") return { label: "working", color: P.green, age: age }
+    if (sess.status === "idle" && age < root.claudeDoneWindow) return { label: "done", color: P.blue, age: age }
+    if (sess.status === "idle") return { label: "idle", color: P.textMuted, age: age }
+    return { label: "waiting", color: P.amber, age: age }
+  }
+  function ago(seconds) {
+    if (seconds < 60) return "now"
+    if (seconds < 3600) return Math.floor(seconds / 60) + "m"
+    if (seconds < 86400) return Math.floor(seconds / 3600) + "h"
+    return Math.floor(seconds / 86400) + "d"
+  }
   function claudeLimit(i) {
     var l = root.claude && root.claude.limits ? root.claude.limits[i] : null
     return l ? Math.round(l.percent * 100) : -1
@@ -273,7 +294,7 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: 16
               text: {
-                var d = clockTick.now.toLocaleDateString(Qt.locale(root.config.locale || "es_CO"), "dddd d 'de' MMMM")
+                var d = clockTick.now.toLocaleDateString(Qt.locale(root.config.locale || "en_US"), root.config.dateFormat || "dddd, MMMM d")
                 return d.charAt(0).toUpperCase() + d.slice(1)
               }
             }
@@ -307,7 +328,7 @@ Item {
                 font.pixelSize: 50
                 font.weight: Font.DemiBold
               }
-              Text { text: "correos nuevos"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 16 }
+              Text { text: "new emails"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 16 }
             }
           }
           MouseArea {
@@ -344,10 +365,10 @@ Item {
               var pc = paperclipCard.pc
               if (!pc || !pc.ok) return ""
               var parts = []
-              if (pc.agentsBusy) parts.push(pc.agentsBusy + " trabajando")
-              parts.push(pc.agentsIdle + " libres")
-              if (pc.agentsPaused) parts.push(pc.agentsPaused + " en pausa")
-              if (pc.agentsError) parts.push(pc.agentsError + " con error")
+              if (pc.agentsBusy) parts.push(pc.agentsBusy + " working")
+              parts.push(pc.agentsIdle + " idle")
+              if (pc.agentsPaused) parts.push(pc.agentsPaused + " paused")
+              if (pc.agentsError) parts.push(pc.agentsError + " failing")
               return parts.join(" · ")
             }
           }
@@ -369,10 +390,10 @@ Item {
               model: {
                 var pc = paperclipCard.pc || {}
                 return [
-                  { value: pc.blocked || 0, label: "bloqueadas", color: P.amber },
-                  { value: pc.inReview || 0, label: "en revisión", color: P.blue },
-                  { value: pc.inProgress || 0, label: "en progreso", color: P.text },
-                  { value: pc.approvals || 0, label: "aprobaciones", color: (pc.approvals || 0) > 0 ? P.amber : P.text }
+                  { value: pc.blocked || 0, label: "blocked", color: P.amber },
+                  { value: pc.inReview || 0, label: "in review", color: P.blue },
+                  { value: pc.inProgress || 0, label: "in progress", color: P.text },
+                  { value: pc.approvals || 0, label: "approvals", color: (pc.approvals || 0) > 0 ? P.amber : P.text }
                 ]
               }
               Rectangle {
@@ -447,6 +468,105 @@ Item {
         }
       }
 
+      // Claude Code sessions
+      Card {
+        id: claudeCard
+        readonly property var sessions: root.feedState.claude || []
+        readonly property int maxRows: root.config.claude && root.config.claude.maxSessions ? root.config.claude.maxSessions : 5
+        Layout.fillWidth: true
+        Layout.preferredHeight: claudeBody.implicitHeight + 44
+        visible: !root.playerExpanded && root.moduleOn("claude") && (sessions.length > 0 || root.claude !== null)
+        // Header opens Claude.
+        MouseArea {
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          height: 56
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openClaude()
+        }
+        ColumnLayout {
+          id: claudeBody
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.margins: P.pad
+          anchors.topMargin: 22
+          spacing: 10
+
+          SectionHeader {
+            Layout.fillWidth: true
+            fontFamily: root.fontFamily
+            glyph: "\u{F06A9}"
+            glyphColor: P.amber
+            label: "Claude Code"
+            detail: {
+              var parts = []
+              var s = root.claudeLimit(0), w = root.claudeLimit(1)
+              if (s >= 0) parts.push("5h " + s + "%")
+              if (w >= 0) parts.push("week " + w + "%")
+              return parts.join(" · ")
+            }
+          }
+
+          Text {
+            visible: claudeCard.sessions.length === 0
+            text: "No open sessions"
+            color: P.textSoft
+            font.family: root.fontFamily
+            font.pixelSize: 16
+          }
+
+          Repeater {
+            model: claudeCard.sessions.slice(0, claudeCard.maxRows)
+            RowLayout {
+              required property var modelData
+              readonly property var state: root.claudeState(modelData)
+              Layout.fillWidth: true
+              spacing: 14
+              Rectangle {
+                Layout.preferredWidth: 10
+                Layout.preferredHeight: 10
+                radius: 5
+                color: parent.state.color
+              }
+              Text {
+                Layout.fillWidth: true
+                text: modelData.name
+                color: parent.state.label === "idle" ? P.textSoft : P.text
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                elide: Text.ElideRight
+              }
+              Text {
+                Layout.maximumWidth: 220
+                text: modelData.project
+                color: P.textMuted
+                font.family: root.fontFamily
+                font.pixelSize: 15
+                elide: Text.ElideRight
+              }
+              Text {
+                Layout.preferredWidth: 110
+                horizontalAlignment: Text.AlignRight
+                text: parent.state.label + " · " + root.ago(parent.state.age)
+                color: parent.state.color
+                font.family: root.fontFamily
+                font.pixelSize: 15
+              }
+            }
+          }
+
+          Text {
+            visible: claudeCard.sessions.length > claudeCard.maxRows
+            text: "+" + (claudeCard.sessions.length - claudeCard.maxRows) + " more"
+            color: P.textMuted
+            font.family: root.fontFamily
+            font.pixelSize: 14
+          }
+        }
+      }
+
       // Chats from the phone
       Card {
         id: chatsCard
@@ -473,11 +593,11 @@ Item {
             fontFamily: root.fontFamily
             glyph: ""
             glyphColor: P.green
-            label: "Chats · " + (root.feedState.phone.name || "teléfono") + (root.feedState.phone.reachable === false ? " (desconectado)" : "")
+            label: "Chats · " + (root.feedState.phone.name || "phone") + (root.feedState.phone.reachable === false ? " (offline)" : "")
             detail: {
               var c = root.feedState.chats || [], n = 0
               for (var i = 0; i < c.length; i++) n += c[i].count
-              return c.length ? c.length + " chats · " + n + " mensajes" : "sin mensajes"
+              return c.length ? c.length + (c.length === 1 ? " chat · " : " chats · ") + n + (n === 1 ? " message" : " messages") : "no messages"
             }
           }
           Repeater {
@@ -523,8 +643,8 @@ Item {
             fontFamily: root.fontFamily
             glyph: ""
             glyphColor: P.blue
-            label: "Correo"
-            detail: (root.feedState.mail || []).length ? (root.feedState.mailNew || 0) + " nuevos" : "sin correos"
+            label: "Mail"
+            detail: (root.feedState.mail || []).length ? (root.feedState.mailNew || 0) + " new" : "no mail"
           }
           Repeater {
             model: root.feedState.mail || []
@@ -551,10 +671,10 @@ Item {
       // Pushes the bottom rows down when chats/mail are short
       Item { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredHeight: 0; visible: !root.playerExpanded }
 
-      // Other phone apps + Claude
+      // Other phone apps
       RowLayout {
         Layout.fillWidth: true
-        visible: !root.playerExpanded && (root.moduleOn("apps") || root.moduleOn("claude"))
+        visible: !root.playerExpanded && root.moduleOn("apps")
         spacing: P.gap
 
         Card {
@@ -575,46 +695,13 @@ Item {
               elide: Text.ElideRight
               text: {
                 var a = root.feedState.apps || []
-                if (!a.length) return "Sin otras notificaciones"
+                if (!a.length) return "No other notifications"
                 return a.map(function (x) { return x.app + " " + x.count }).join(" · ")
               }
             }
           }
         }
 
-        Card {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 64
-          visible: root.moduleOn("claude") && root.claude !== null
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.openClaude()
-          }
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 24
-            anchors.rightMargin: 24
-            spacing: 14
-            Text { text: "\u{F06A9}"; color: P.amber; font.family: root.fontFamily; font.pixelSize: 20 }
-            Text {
-              Layout.fillWidth: true
-              color: P.textSoft
-              font.family: root.fontFamily
-              font.pixelSize: 16
-              elide: Text.ElideRight
-              text: {
-                if (!root.claude) return ""
-                var s = root.claudeLimit(0), w = root.claudeLimit(1)
-                var parts = []
-                if (s >= 0) parts.push("5h " + s + "%")
-                if (w >= 0) parts.push("sem " + w + "%")
-                parts.push((root.claude.todaySessions || 0) + " hoy")
-                return "Claude  " + parts.join(" · ")
-              }
-            }
-          }
-        }
       }
 
       // Expanded player: summary row on top, big player below
@@ -624,10 +711,10 @@ Item {
         spacing: 16
         Repeater {
           model: [
-            { value: Qt.formatTime(clockTick.now, "HH:mm"), label: "hora", color: "#d4d4d8" },
-            { value: String(root.feedState.mailNew || 0), label: "correos", color: P.blue },
+            { value: Qt.formatTime(clockTick.now, "HH:mm"), label: "time", color: "#d4d4d8" },
+            { value: String(root.feedState.mailNew || 0), label: "emails", color: P.blue },
             { value: String((root.feedState.chats || []).length), label: "chats", color: P.green },
-            { value: root.claudeLimit(0) >= 0 ? root.claudeLimit(0) + "%" : "–", label: "Claude", color: P.amber }
+            { value: String(root.claudeWorking()), label: "Claude working", color: P.amber }
           ]
           Card {
             required property var modelData
@@ -660,7 +747,7 @@ Item {
               fontFamily: root.fontFamily
               glyph: ""
               glyphColor: P.green
-              label: root.player ? (root.player.identity || "Reproductor") : "Reproductor"
+              label: root.player ? (root.player.identity || "Player") : "Player"
             }
             Text {
               text: "\u{F0294}"
@@ -684,7 +771,7 @@ Item {
             spacing: 8
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.player ? (root.player.trackTitle || "") : "Nada sonando"
+              text: root.player ? (root.player.trackTitle || "") : "Nothing playing"
               color: P.textStrong
               font.family: root.fontFamily
               font.pixelSize: 32
@@ -750,7 +837,7 @@ Item {
               Layout.fillWidth: true
               spacing: 10
               Text {
-                text: root.player ? (root.player.trackTitle || "") : "Nada sonando"
+                text: root.player ? (root.player.trackTitle || "") : "Nothing playing"
                 color: P.textStrong
                 font.family: root.fontFamily
                 font.pixelSize: 18
@@ -813,9 +900,11 @@ Item {
           font.pixelSize: 17
           text: {
             var parts = []
-            if (root.feedState.mailNew) parts.push("Correo " + root.feedState.mailNew)
+            if (root.feedState.mailNew) parts.push("Mail " + root.feedState.mailNew)
             var chats = (root.feedState.chats || []).length
             if (chats) parts.push("Chats " + chats)
+            var working = root.claudeWorking()
+            if (working) parts.push("Claude " + working + " working")
             if (root.player && root.player.isPlaying)
               parts.push((root.player.trackTitle || "") + (root.player.trackArtist ? " — " + root.player.trackArtist : ""))
             return parts.join("   ")

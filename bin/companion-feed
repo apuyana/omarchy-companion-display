@@ -2,7 +2,8 @@
 """Data feed for the Omarchy companion display.
 
 Collects phone notifications from KDE Connect, mail notifications posted on
-the desktop and, optionally, task status from a Paperclip instance, and prints the combined state as one JSON object per line on
+the desktop, Claude Code session status and, optionally, task status from a
+Paperclip instance, and prints the combined state as one JSON object per line on
 stdout every time it changes. Reads simple commands from stdin:
 
     seen              mark every mail as seen (resets the "new" count)
@@ -40,6 +41,7 @@ STATE_DIR = os.path.join(
     "omarchy-companion-display",
 )
 MAIL_STATE = os.path.join(STATE_DIR, "mail.json")
+CLAUDE_SESSIONS = os.path.expanduser("~/.claude/sessions")
 
 DEFAULTS = {
     "chatApps": ["WhatsApp", "WhatsApp Business", "Telegram", "Signal", "Messages"],
@@ -80,6 +82,7 @@ class Feed:
         self.desktop_mail = []
         self.seen_at = 0
         self.paperclip = None
+        self.claude_sessions = []
         self.last_output = None
         self.refresh_pending = False
         self.load_mail_state()
@@ -238,19 +241,19 @@ class Feed:
             with open(token_file) as f:
                 token = f.read().strip()
         except OSError:
-            return {"ok": False, "error": "Falta la API key (" + token_file + ")"}
+            return {"ok": False, "error": "Missing API key (" + token_file + ")"}
         if not token:
-            return {"ok": False, "error": "La API key está vacía"}
+            return {"ok": False, "error": "The API key file is empty"}
         try:
             dash = self.paperclip_get(base, token, "/companies/%s/dashboard" % company)
             issues = self.paperclip_get(base, token, "/companies/%s/issues" % company,
                                         {"status": "blocked,in_review,in_progress"})
             agents = self.paperclip_get(base, token, "/companies/%s/agents" % company)
         except urllib.error.HTTPError as e:
-            msg = {401: "API key inválida o vencida", 403: "Sin acceso a la compañía"}
+            msg = {401: "Invalid or expired API key", 403: "No access to this company"}
             return {"ok": False, "error": msg.get(e.code, "HTTP %d" % e.code)}
         except (urllib.error.URLError, OSError, ValueError) as e:
-            return {"ok": False, "error": "Sin conexión: " + str(getattr(e, "reason", e))}
+            return {"ok": False, "error": "Cannot reach Paperclip: " + str(getattr(e, "reason", e))}
 
         if isinstance(issues, dict):
             issues = issues.get("issues") or issues.get("items") or []
@@ -307,6 +310,57 @@ class Feed:
                 GLib.idle_add(self.set_paperclip, None)
             time.sleep(max(30, int(cfg.get("interval", 60))))
 
+    # --------------------------------------------------------------- claude
+
+    @staticmethod
+    def process_start(pid):
+        try:
+            with open("/proc/%d/stat" % pid) as f:
+                # Field 22 (start time), counted after the parenthesised name.
+                return f.read().rsplit(")", 1)[1].split()[19]
+        except (OSError, IndexError):
+            return None
+
+    def read_claude(self):
+        sessions = []
+        try:
+            names = os.listdir(CLAUDE_SESSIONS)
+        except OSError:
+            names = []
+        for name in names:
+            if not name.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(CLAUDE_SESSIONS, name)) as f:
+                    data = json.load(f)
+            except (OSError, ValueError):
+                continue
+            pid = data.get("pid")
+            # Session files outlive crashed processes and pids get reused, so
+            # only trust a file whose process is alive with the same start time.
+            if not isinstance(pid, int):
+                continue
+            start = self.process_start(pid)
+            if start is None or (data.get("procStart") and str(data["procStart"]) != start):
+                continue
+            cwd = data.get("cwd", "")
+            sessions.append({
+                "name": data.get("name") or os.path.basename(cwd),
+                "project": os.path.basename(cwd.rstrip("/")),
+                "status": data.get("status", "idle"),
+                "since": (data.get("statusUpdatedAt") or data.get("updatedAt") or 0) / 1000,
+            })
+        rank = {"busy": 0, "idle": 2}
+        sessions.sort(key=lambda x: (rank.get(x["status"], 1), -x["since"]))
+        return sessions
+
+    def refresh_claude(self, *_):
+        sessions = self.read_claude()
+        if sessions != self.claude_sessions:
+            self.claude_sessions = sessions
+            self.emit()
+        return True
+
     # ------------------------------------------------------------- output
 
     def build_state(self):
@@ -357,6 +411,7 @@ class Feed:
             "apps": [{"app": a, "count": c}
                      for a, c in sorted(apps.items(), key=lambda kv: -kv[1])],
             "paperclip": self.paperclip,
+            "claude": self.claude_sessions,
         }
 
     def emit(self):
@@ -435,6 +490,15 @@ class Feed:
             self.schedule_refresh,
         )
         GLib.timeout_add_seconds(60, lambda: (self.schedule_refresh(), True)[1])
+        # Claude Code rewrites its session files on every status change.
+        try:
+            self.claude_monitor = Gio.File.new_for_path(CLAUDE_SESSIONS).monitor_directory(
+                Gio.FileMonitorFlags.NONE, None)
+            self.claude_monitor.connect("changed", self.refresh_claude)
+        except GLib.Error:
+            pass
+        GLib.timeout_add_seconds(30, self.refresh_claude)
+        self.claude_sessions = self.read_claude()
         threading.Thread(target=self.watch_desktop_notifications, daemon=True).start()
         threading.Thread(target=self.read_stdin, daemon=True).start()
         threading.Thread(target=self.poll_paperclip, daemon=True).start()

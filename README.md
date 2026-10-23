@@ -8,7 +8,7 @@ It turns a spare screen into a quiet, glanceable dashboard:
 - **Mail** built from notifications: desktop mail clients (e.g. BlueMail) and mail apps on the phone (Outlook, Gmail) via KDE Connect. No credentials needed. Click the counter to mark everything as seen.
 - **Other phone notifications**, counted per app.
 - **Media player** (any MPRIS player: Spotify, the phone through KDE Connect, browsers): a compact bar at the bottom that expands to a full player.
-- **Claude usage** from Omarchy's agents usage records (optional).
+- **Claude Code sessions**: every open session with its state (working, done, waiting, idle) and how long ago it changed, plus usage limits from Omarchy's agents usage records.
 - **Burn-in care**: dark palette with no white areas, a slow pixel shift, and an idle mode (pure black, small dim block that moves around) after a few minutes without news.
 
 ## Requirements
@@ -42,7 +42,8 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | Key | Default | What it does |
 |---|---|---|
 | `screen` | `HDMI-A-1` | Monitor name to draw on |
-| `locale` | `es_CO` | Locale for the date |
+| `locale` | `en_US` | Locale for the date |
+| `dateFormat` | `dddd, MMMM d` | Qt date format under the clock |
 | `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode |
 | `privacy` | `false` | Hide message and mail text, show only senders and counts |
 | `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip (burn-in) |
@@ -52,6 +53,8 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
 | `paperclip` | `{}` | Paperclip instance, see below |
+| `claude.maxSessions` | `5` | Claude Code sessions listed |
+| `claude.doneMinutes` | `15` | Minutes a finished session shows as "done" before it turns idle |
 | `modules` | all `true` | Turn sections off: `clock`, `paperclip`, `mail`, `chats`, `apps`, `player`, `claude` |
 
 ### Paperclip (optional)

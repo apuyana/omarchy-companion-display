@@ -1,6 +1,6 @@
 {
   "screen": "HDMI-A-1",
-  "locale": "es_CO",
+  "locale": "en_US",
   "idleSeconds": 300,
   "privacy": false,
   "hideBar": false,
@@ -37,5 +37,9 @@
     "tokenFile": "~/.config/omarchy/companion-display-paperclip.token",
     "interval": 60,
     "maxIssues": 4
+  },
+  "claude": {
+    "maxSessions": 5,
+    "doneMinutes": 15
   }
 }
