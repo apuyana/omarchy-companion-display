@@ -4,6 +4,8 @@ An always-on companion display for a secondary monitor on [Omarchy](https://omar
 
 It turns a spare screen into a quiet, glanceable dashboard. Every section is optional, and the ones that need something you don't have hide themselves.
 
+<p align="center"><img src="screenshots/demo.png" alt="The companion display in demo mode" width="480"></p>
+
 | Section | Needs | Shows |
 |---|---|---|
 | Clock | – | Time and date |
@@ -43,7 +45,7 @@ The panel sits on the Bottom layer of that monitor, so windows you open there st
 - **Paperclip task**: opens it in the browser.
 - **Claude bar**: the icon opens Claude Desktop; the rest of the bar expands the list of every session.
 - **Player bar**: the buttons control playback, the expand button switches to a full player, and the rest of the bar opens your player app (Spotify by default).
-- **Lyrics**: the lyrics button (lines with a music note) opens a lyrics panel above the player bar (about a third of the screen), or shows them in place of the album art in the full player. Synced lyrics follow the song. They come from [LRCLIB](https://lrclib.net), a free lyrics database that needs no account, are fetched only while the panel is open, and are cached under `~/.cache/omarchy-companion-display/lyrics`.
+- **Lyrics**: the lyrics button (lines with a music note) opens a lyrics panel above the player bar (about a third of the screen), or shows them in place of the album art in the full player. Synced lyrics follow the song. Live and remastered versions fall back to the plain song title; live versions show unsynced lyrics, since studio timings drift. If the service is down, the panel tries again every minute. They come from [LRCLIB](https://lrclib.net), a free lyrics database that needs no account, are fetched only while the panel is open, and are cached under `~/.cache/omarchy-companion-display/lyrics`.
 
 **Idle mode** starts after `idleSeconds` without news or mouse movement over the panel. It wakes up on a new chat, mail or phone notification, when Claude Code finishes its last working session, or when you move the mouse over it.
 
@@ -57,7 +59,8 @@ The panel sits on the Bottom layer of that monitor, so windows you open there st
 | `locale` | `en_US` | Locale for the date |
 | `dateFormat` | `dddd, MMMM d` | Qt date format under the clock |
 | `idleSeconds` | `300` | Seconds without news before idle mode |
-| `privacy` | `false` | Hide message and mail text, show only senders and counts |
+| `privacy` | `false` | Hide message and mail text and Paperclip task titles; show only senders, task ids and counts |
+| `demo` | `false` | Show made-up data instead of yours, for screenshots or to try the panel out |
 | `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
 | `mailApps` | your default mail client | Desktop apps whose notifications count as mail |
@@ -97,7 +100,7 @@ Phone mail apps are matched by `phoneMailApps`.
 
 ### Paperclip
 
-Add your instance to the config:
+The section is off in the example config. Turn it on with `"modules": { "paperclip": true }` and add your instance:
 
 ```json
 "paperclip": {

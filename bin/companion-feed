@@ -50,6 +50,7 @@ DEFAULTS = {
     "ignoreApps": [],
     "mailHistory": 30,
     "paperclip": {},
+    "demo": False,
 }
 
 
@@ -393,8 +394,58 @@ class Feed:
 
     # ------------------------------------------------------------- output
 
+    @staticmethod
+    def demo_state():
+        """Made-up data for screenshots and for trying the panel out."""
+        now = time.time()
+
+        def chat(app, title, text, count, minutes):
+            return {"app": app, "title": title, "text": text, "count": count,
+                    "ts": now - minutes * 60, "keys": []}
+
+        def mail(app, sender, subject, preview, minutes, new):
+            return {"app": app, "summary": sender, "body": subject + "\n" + preview,
+                    "ts": now - minutes * 60, "source": "phone", "keys": [], "new": new}
+
+        def issue(ident, title, status, assignee):
+            return {"identifier": ident, "title": title, "status": status,
+                    "assignee": assignee, "updatedAt": "", "url": ""}
+
+        return {
+            "phone": {"name": "Phone", "reachable": True},
+            "chats": [
+                chat("WhatsApp", "Family", "Mom: Dinner at 8, bring dessert", 3, 4),
+                chat("WhatsApp", "Sam Rivera", "Pushed the fix, can you take a look?", 1, 18),
+                chat("Telegram", "Climbing crew", "Jo: Saturday morning works for me", 5, 52),
+            ],
+            "mail": [
+                mail("Gmail", "Dana Lee", "Quarterly review", "Slides are in the shared folder, comments welcome before Friday.", 9, True),
+                mail("Gmail", "City Library", "Your hold is ready", "Pick it up within seven days at the main branch.", 75, True),
+                mail("Outlook", "Build server", "Nightly build passed", "All 412 tests passed in 6m 31s.", 190, False),
+            ],
+            "mailNew": 2,
+            "apps": [{"app": "Calendar", "count": 2}, {"app": "Bank", "count": 1}],
+            "paperclip": {
+                "ok": True, "blocked": 1, "inReview": 2, "inProgress": 3, "approvals": 1,
+                "agentsBusy": 2, "agentsIdle": 4, "agentsPaused": 0, "agentsError": 0,
+                "issues": [
+                    issue("ACME-41", "Rotate the staging database credentials", "blocked", "Ops"),
+                    issue("ACME-38", "Add dark mode to the settings page", "in_review", "Frontend"),
+                    issue("ACME-44", "Write the onboarding guide", "in_progress", "Docs"),
+                    issue("ACME-36", "Cache avatar thumbnails", "in_review", "Backend"),
+                ],
+                "updated": now,
+            },
+            "claude": [
+                {"name": "landing-page", "project": "landing-page", "status": "busy", "since": now - 140},
+                {"name": "api", "project": "api", "status": "idle", "since": now - 420},
+            ],
+        }
+
     def build_state(self):
         cfg = self.config
+        if cfg["demo"]:
+            return self.demo_state()
         chat_apps = lower_set(cfg["chatApps"])
         phone_mail_apps = lower_set(cfg["phoneMailApps"])
         ignore = lower_set(cfg["ignoreApps"])

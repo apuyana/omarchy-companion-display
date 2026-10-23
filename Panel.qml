@@ -178,7 +178,28 @@ Item {
 
   // ------------------------------------------------------------- media
 
+  // Made-up track for demo mode: no album art, controls do nothing.
+  QtObject {
+    id: demoPlayer
+    property string identity: "Spotify"
+    property string trackTitle: "Northern Lights"
+    property string trackArtist: "The Quiet Hours"
+    property string trackAlbum: "Long Way Home"
+    property string trackArtUrl: ""
+    property bool isPlaying: true
+    property real position: 97
+    property real length: 241
+    property bool canGoPrevious: true
+    property bool canGoNext: true
+    property bool canTogglePlaying: true
+    function previous() {}
+    function next() {}
+    function togglePlaying() { isPlaying = !isPlaying }
+  }
+  readonly property bool demo: config.demo === true
+
   readonly property var player: {
+    if (root.demo) return demoPlayer
     var list = Mpris.players ? Mpris.players.values : []
     var titled = null
     for (var i = 0; i < list.length; i++) {
@@ -249,6 +270,13 @@ Item {
         if (r.track && r.track.join("\n") === root.lyricsKey) root.lyrics = r
       }
     }
+  }
+
+  // The lyrics service was unreachable: try the same song again in a minute.
+  Timer {
+    interval: 60 * 1000
+    running: root.lyricsOpen && !!root.lyrics && root.lyrics.error === true
+    onTriggered: { root.lyricsKey = ""; root.fetchLyrics() }
   }
 
   // Last synced line whose time has come; a small lead feels in step.
@@ -506,7 +534,7 @@ Item {
             fontFamily: root.fontFamily
             glyph: ""
             glyphColor: P.amber
-            label: "Paperclip" + (root.config.paperclip && root.config.paperclip.name ? " · " + root.config.paperclip.name : "")
+            label: "Paperclip" + (root.demo ? " · Acme" : (root.config.paperclip && root.config.paperclip.name ? " · " + root.config.paperclip.name : ""))
             detail: {
               var pc = paperclipCard.pc
               if (!pc || !pc.ok) return ""
@@ -596,8 +624,9 @@ Item {
                 }
                 Text {
                   Layout.fillWidth: true
-                  text: modelData.title
-                  color: P.text
+                  // Privacy keeps the task id and assignee, not the title.
+                  text: root.privacy ? modelData.status.replace("_", " ") : modelData.title
+                  color: root.privacy ? P.textMuted : P.text
                   font.family: root.fontFamily
                   font.pixelSize: 16
                   elide: Text.ElideRight
