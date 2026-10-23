@@ -39,7 +39,7 @@
     "maxIssues": 4
   },
   "claude": {
-    "maxSessions": 5,
-    "doneMinutes": 15
+    "doneMinutes": 15,
+    "expanded": false
   }
 }

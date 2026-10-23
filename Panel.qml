@@ -155,6 +155,9 @@ Item {
     return titled
   }
   property bool playerExpanded: false
+  property bool claudeExpanded: false
+  // Start expanded when the config asks for it (re-applied on config changes).
+  onConfigChanged: claudeExpanded = !!(config.claude && config.claude.expanded)
 
   Timer {
     interval: 1000
@@ -468,105 +471,6 @@ Item {
         }
       }
 
-      // Claude Code sessions
-      Card {
-        id: claudeCard
-        readonly property var sessions: root.feedState.claude || []
-        readonly property int maxRows: root.config.claude && root.config.claude.maxSessions ? root.config.claude.maxSessions : 5
-        Layout.fillWidth: true
-        Layout.preferredHeight: claudeBody.implicitHeight + 44
-        visible: !root.playerExpanded && root.moduleOn("claude") && (sessions.length > 0 || root.claude !== null)
-        // Header opens Claude.
-        MouseArea {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          height: 56
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.openClaude()
-        }
-        ColumnLayout {
-          id: claudeBody
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          anchors.margins: P.pad
-          anchors.topMargin: 22
-          spacing: 10
-
-          SectionHeader {
-            Layout.fillWidth: true
-            fontFamily: root.fontFamily
-            glyph: "\u{F06A9}"
-            glyphColor: P.amber
-            label: "Claude Code"
-            detail: {
-              var parts = []
-              var s = root.claudeLimit(0), w = root.claudeLimit(1)
-              if (s >= 0) parts.push("5h " + s + "%")
-              if (w >= 0) parts.push("week " + w + "%")
-              return parts.join(" · ")
-            }
-          }
-
-          Text {
-            visible: claudeCard.sessions.length === 0
-            text: "No open sessions"
-            color: P.textSoft
-            font.family: root.fontFamily
-            font.pixelSize: 16
-          }
-
-          Repeater {
-            model: claudeCard.sessions.slice(0, claudeCard.maxRows)
-            RowLayout {
-              required property var modelData
-              readonly property var state: root.claudeState(modelData)
-              Layout.fillWidth: true
-              spacing: 14
-              Rectangle {
-                Layout.preferredWidth: 10
-                Layout.preferredHeight: 10
-                radius: 5
-                color: parent.state.color
-              }
-              Text {
-                Layout.fillWidth: true
-                text: modelData.name
-                color: parent.state.label === "idle" ? P.textSoft : P.text
-                font.family: root.fontFamily
-                font.pixelSize: 16
-                elide: Text.ElideRight
-              }
-              Text {
-                Layout.maximumWidth: 220
-                text: modelData.project
-                color: P.textMuted
-                font.family: root.fontFamily
-                font.pixelSize: 15
-                elide: Text.ElideRight
-              }
-              Text {
-                Layout.preferredWidth: 110
-                horizontalAlignment: Text.AlignRight
-                text: parent.state.label + " · " + root.ago(parent.state.age)
-                color: parent.state.color
-                font.family: root.fontFamily
-                font.pixelSize: 15
-              }
-            }
-          }
-
-          Text {
-            visible: claudeCard.sessions.length > claudeCard.maxRows
-            text: "+" + (claudeCard.sessions.length - claudeCard.maxRows) + " more"
-            color: P.textMuted
-            font.family: root.fontFamily
-            font.pixelSize: 14
-          }
-        }
-      }
-
       // Chats from the phone
       Card {
         id: chatsCard
@@ -702,6 +606,139 @@ Item {
           }
         }
 
+      }
+
+      // Claude Code: one-line counter, expands upward to list every session
+      Card {
+        id: claudeCard
+        readonly property var sessions: root.feedState.claude || []
+        readonly property var counts: {
+          var c = { working: 0, done: 0, waiting: 0, idle: 0 }
+          for (var i = 0; i < sessions.length; i++) {
+            var st = root.claudeState(sessions[i]).label
+            c[st] = (c[st] || 0) + 1
+          }
+          return c
+        }
+        Layout.fillWidth: true
+        Layout.preferredHeight: claudeBody.implicitHeight + 32
+        visible: !root.playerExpanded && root.moduleOn("claude") && (sessions.length > 0 || root.claude !== null)
+
+        ColumnLayout {
+          id: claudeBody
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.leftMargin: 24
+          anchors.rightMargin: 18
+          anchors.topMargin: 16
+          spacing: 10
+
+          RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 32
+            spacing: 14
+            Text { text: "\u{F06A9}"; color: P.amber; font.family: root.fontFamily; font.pixelSize: 20 }
+            Repeater {
+              model: [
+                { key: "working", color: P.green },
+                { key: "done", color: P.blue },
+                { key: "waiting", color: P.amber },
+                { key: "idle", color: P.textMuted }
+              ]
+              RowLayout {
+                required property var modelData
+                readonly property int n: claudeCard.counts[modelData.key] || 0
+                visible: n > 0 || modelData.key === "working"
+                spacing: 8
+                Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: modelData.color }
+                Text {
+                  text: parent.n + " " + modelData.key
+                  color: modelData.key === "idle" ? P.textMuted : P.text
+                  font.family: root.fontFamily
+                  font.pixelSize: 16
+                }
+              }
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+              color: P.textMuted
+              font.family: root.fontFamily
+              font.pixelSize: 15
+              text: {
+                var parts = []
+                var s = root.claudeLimit(0), w = root.claudeLimit(1)
+                if (s >= 0) parts.push("5h " + s + "%")
+                if (w >= 0) parts.push("week " + w + "%")
+                return parts.join(" · ")
+              }
+            }
+            Text {
+              text: root.claudeExpanded ? "\u{F0140}" : "\u{F0143}"
+              color: P.textMuted
+              font.family: root.fontFamily
+              font.pixelSize: 22
+            }
+          }
+
+          Repeater {
+            model: root.claudeExpanded ? claudeCard.sessions : []
+            RowLayout {
+              required property var modelData
+              readonly property var state: root.claudeState(modelData)
+              Layout.fillWidth: true
+              spacing: 14
+              Rectangle {
+                Layout.preferredWidth: 10
+                Layout.preferredHeight: 10
+                radius: 5
+                color: parent.state.color
+              }
+              Text {
+                Layout.fillWidth: true
+                text: modelData.name
+                color: parent.state.label === "idle" ? P.textSoft : P.text
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                elide: Text.ElideRight
+              }
+              Text {
+                Layout.maximumWidth: 220
+                text: modelData.project
+                color: P.textMuted
+                font.family: root.fontFamily
+                font.pixelSize: 15
+                elide: Text.ElideRight
+              }
+              Text {
+                Layout.preferredWidth: 110
+                horizontalAlignment: Text.AlignRight
+                text: parent.state.label + " · " + root.ago(parent.state.age)
+                color: parent.state.color
+                font.family: root.fontFamily
+                font.pixelSize: 15
+              }
+            }
+          }
+
+          Text {
+            visible: root.claudeExpanded && claudeCard.sessions.length === 0
+            text: "No open sessions"
+            color: P.textSoft
+            font.family: root.fontFamily
+            font.pixelSize: 16
+          }
+        }
+
+        // The counter row toggles the list.
+        MouseArea {
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          height: 64
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.claudeExpanded = !root.claudeExpanded
+        }
       }
 
       // Expanded player: summary row on top, big player below

@@ -8,7 +8,7 @@ It turns a spare screen into a quiet, glanceable dashboard:
 - **Mail** built from notifications: desktop mail clients (e.g. BlueMail) and mail apps on the phone (Outlook, Gmail) via KDE Connect. No credentials needed. Click the counter to mark everything as seen.
 - **Other phone notifications**, counted per app.
 - **Media player** (any MPRIS player: Spotify, the phone through KDE Connect, browsers): a compact bar at the bottom that expands to a full player.
-- **Claude Code sessions**: every open session with its state (working, done, waiting, idle) and how long ago it changed, plus usage limits from Omarchy's agents usage records.
+- **Claude Code sessions**: a one-line counter at the bottom (working, done, waiting, idle) that expands to list every open session and how long ago it changed, plus usage limits from Omarchy's agents usage records.
 - **Burn-in care**: dark palette with no white areas, a slow pixel shift, and an idle mode (pure black, small dim block that moves around) after a few minutes without news.
 
 ## Requirements
@@ -53,7 +53,7 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
 | `paperclip` | `{}` | Paperclip instance, see below |
-| `claude.maxSessions` | `5` | Claude Code sessions listed |
+| `claude.expanded` | `false` | Start with the Claude session list open |
 | `claude.doneMinutes` | `15` | Minutes a finished session shows as "done" before it turns idle |
 | `modules` | all `true` | Turn sections off: `clock`, `paperclip`, `mail`, `chats`, `apps`, `player`, `claude` |
 
