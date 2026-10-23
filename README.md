@@ -50,7 +50,30 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
-| `modules` | all `true` | Turn sections off: `clock`, `mail`, `chats`, `apps`, `player`, `claude` |
+| `paperclip` | `{}` | Paperclip instance, see below |
+| `modules` | all `true` | Turn sections off: `clock`, `paperclip`, `mail`, `chats`, `apps`, `player`, `claude` |
+
+### Paperclip (optional)
+
+Shows task counts (blocked, in review, in progress, pending approvals), agent availability and the latest blocked or in-review tasks from a [Paperclip](https://github.com/paperclipai/paperclip) instance. Add to the config:
+
+```json
+"paperclip": {
+  "url": "https://paperclip.example.com",
+  "companyId": "<company uuid>",
+  "name": "My Company",
+  "interval": 60,
+  "maxIssues": 4
+}
+```
+
+It needs a board API key in `~/.config/omarchy/companion-display-paperclip.token`. If the Paperclip CLI is logged in (`paperclipai auth login`), create one with:
+
+```bash
+~/.config/omarchy/plugins/apuyana.companion-display/bin/paperclip-create-key https://paperclip.example.com
+```
+
+The key is named `companion-display`, expires in a year by default, and is never printed. The panel only reads from Paperclip, but a board key has your full board permissions, so keep the file private.
 
 ### Phone shows "Sensitive notification content hidden"
 

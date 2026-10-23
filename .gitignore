@@ -6,3 +6,5 @@ config.local.json
 # Screenshots with real data
 screenshots/private/
 __pycache__/
+companion-display-paperclip.token
+*.token

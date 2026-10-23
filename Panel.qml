@@ -73,6 +73,19 @@ Item {
   }
   Timer { id: feedRestart; interval: 5000; onTriggered: feed.running = true }
 
+  // ------------------------------------------------------- open apps
+
+  // Focus the app's window if it is already open, otherwise launch it.
+  Process { id: opener }
+  function openApp(args) {
+    opener.command = args
+    opener.running = true
+  }
+  function openWhatsApp() { openApp(["omarchy-launch-or-focus-webapp", "web.whatsapp.com", "https://web.whatsapp.com/"]) }
+  function openSpotify() { openApp(["omarchy-launch-or-focus", "^spotify$", "spotify"]) }
+  function openClaude() { openApp(["omarchy-launch-or-focus", "^com.anthropic.Claude$", "claude-desktop"]) }
+  function openMail() { openApp(["omarchy-launch-or-focus", "BlueMail", "bluemail"]) }
+
   // ------------------------------------------------------------ claude
 
   property var claude: null
@@ -238,19 +251,136 @@ Item {
           MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: feed.send("seen")
+            onClicked: root.openMail()
+          }
+        }
+      }
+
+      // Paperclip tasks
+      Card {
+        id: paperclipCard
+        readonly property var pc: root.feedState.paperclip
+        Layout.fillWidth: true
+        Layout.preferredHeight: paperclipBody.implicitHeight + 44
+        visible: !root.playerExpanded && root.moduleOn("paperclip") && pc !== null && pc !== undefined
+        ColumnLayout {
+          id: paperclipBody
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.margins: P.pad
+          anchors.topMargin: 22
+          spacing: 16
+
+          SectionHeader {
+            Layout.fillWidth: true
+            fontFamily: root.fontFamily
+            glyph: ""
+            glyphColor: P.amber
+            label: "Paperclip" + (root.config.paperclip && root.config.paperclip.name ? " · " + root.config.paperclip.name : "")
+            detail: {
+              var pc = paperclipCard.pc
+              if (!pc || !pc.ok) return ""
+              var parts = []
+              if (pc.agentsBusy) parts.push(pc.agentsBusy + " trabajando")
+              parts.push(pc.agentsIdle + " libres")
+              if (pc.agentsPaused) parts.push(pc.agentsPaused + " en pausa")
+              if (pc.agentsError) parts.push(pc.agentsError + " con error")
+              return parts.join(" · ")
+            }
+          }
+
+          Text {
+            visible: !!paperclipCard.pc && !paperclipCard.pc.ok
+            text: paperclipCard.pc ? (paperclipCard.pc.error || "") : ""
+            color: P.textSoft
+            font.family: root.fontFamily
+            font.pixelSize: 16
+          }
+
+          GridLayout {
+            Layout.fillWidth: true
+            visible: !!paperclipCard.pc && paperclipCard.pc.ok
+            columns: 4
+            columnSpacing: 12
+            Repeater {
+              model: {
+                var pc = paperclipCard.pc || {}
+                return [
+                  { value: pc.blocked || 0, label: "bloqueadas", color: P.amber },
+                  { value: pc.inReview || 0, label: "en revisión", color: P.blue },
+                  { value: pc.inProgress || 0, label: "en progreso", color: P.text },
+                  { value: pc.approvals || 0, label: "aprobaciones", color: (pc.approvals || 0) > 0 ? P.amber : P.text }
+                ]
+              }
+              Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                implicitHeight: 72
+                radius: 12
+                color: P.item
+                ColumnLayout {
+                  anchors.verticalCenter: parent.verticalCenter
+                  anchors.left: parent.left
+                  anchors.leftMargin: 16
+                  spacing: 0
+                  Text { text: modelData.value; color: modelData.color; font.family: root.fontFamily; font.pixelSize: 30; font.weight: Font.DemiBold }
+                  Text { text: modelData.label; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+                }
+              }
+            }
+          }
+
+          Repeater {
+            model: paperclipCard.pc && paperclipCard.pc.ok ? paperclipCard.pc.issues.slice(0, root.config.paperclip && root.config.paperclip.maxIssues ? root.config.paperclip.maxIssues : 4) : []
+            RowLayout {
+              required property var modelData
+              Layout.fillWidth: true
+              spacing: 14
+              Text {
+                Layout.preferredWidth: 96
+                text: modelData.identifier
+                color: modelData.status === "blocked" ? P.amber : (modelData.status === "in_review" ? P.blue : P.textSoft)
+                font.family: root.fontFamily
+                font.pixelSize: 16
+              }
+              Text {
+                Layout.fillWidth: true
+                text: modelData.title
+                color: P.text
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                elide: Text.ElideRight
+              }
+              Text {
+                text: modelData.assignee
+                color: P.textMuted
+                font.family: root.fontFamily
+                font.pixelSize: 15
+              }
+            }
           }
         }
       }
 
       // Chats from the phone
       Card {
+        id: chatsCard
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredHeight: 1
+        Layout.preferredHeight: chatsCol.implicitHeight + 22 + P.pad
+        Layout.maximumHeight: chatsCol.implicitHeight + 22 + P.pad
+        Layout.minimumHeight: 0
         visible: !root.playerExpanded && root.moduleOn("chats")
         clip: true
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openWhatsApp()
+        }
         ColumnLayout {
+          id: chatsCol
           anchors.fill: parent
           anchors.margins: P.pad
           anchors.topMargin: 22
@@ -284,12 +414,21 @@ Item {
 
       // Mail
       Card {
+        id: mailCard
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredHeight: 1
+        Layout.preferredHeight: mailCol.implicitHeight + 22 + P.pad
+        Layout.maximumHeight: mailCol.implicitHeight + 22 + P.pad
+        Layout.minimumHeight: 0
         visible: !root.playerExpanded && root.moduleOn("mail")
         clip: true
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openMail()
+        }
         ColumnLayout {
+          id: mailCol
           anchors.fill: parent
           anchors.margins: P.pad
           anchors.topMargin: 22
@@ -321,6 +460,9 @@ Item {
           Item { Layout.fillHeight: true }
         }
       }
+
+      // Pushes the bottom rows down when chats/mail are short
+      Item { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredHeight: 0; visible: !root.playerExpanded }
 
       // Other phone apps + Claude
       RowLayout {
@@ -357,6 +499,11 @@ Item {
           Layout.fillWidth: true
           Layout.preferredHeight: 64
           visible: root.moduleOn("claude") && root.claude !== null
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openClaude()
+          }
           RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 24
@@ -493,6 +640,11 @@ Item {
         Layout.fillWidth: true
         Layout.preferredHeight: 92
         visible: !root.playerExpanded && root.moduleOn("player")
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openSpotify()
+        }
         RowLayout {
           anchors.fill: parent
           anchors.leftMargin: 14

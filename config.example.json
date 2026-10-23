@@ -3,9 +3,21 @@
   "locale": "es_CO",
   "idleSeconds": 300,
   "privacy": false,
-  "chatApps": ["WhatsApp", "WhatsApp Business", "Telegram", "Signal", "Messages"],
-  "mailApps": ["BlueMail"],
-  "phoneMailApps": ["Outlook", "Gmail", "BlueMail"],
+  "chatApps": [
+    "WhatsApp",
+    "WhatsApp Business",
+    "Telegram",
+    "Signal",
+    "Messages"
+  ],
+  "mailApps": [
+    "BlueMail"
+  ],
+  "phoneMailApps": [
+    "Outlook",
+    "Gmail",
+    "BlueMail"
+  ],
   "ignoreApps": [],
   "mailHistory": 30,
   "modules": {
@@ -14,6 +26,15 @@
     "chats": true,
     "apps": true,
     "player": true,
-    "claude": true
+    "claude": true,
+    "paperclip": true
+  },
+  "paperclip": {
+    "url": "",
+    "companyId": "",
+    "name": "",
+    "tokenFile": "~/.config/omarchy/companion-display-paperclip.token",
+    "interval": 60,
+    "maxIssues": 4
   }
 }
