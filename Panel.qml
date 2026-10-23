@@ -1,0 +1,600 @@
+import QtQuick
+import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
+import Quickshell.Services.Mpris
+import Quickshell.Wayland
+import qs.Commons
+import "components"
+import "Palette.js" as P
+
+// Companion display: a full-screen, always-on dashboard on a secondary
+// monitor. Lives on the Bottom layer, so any window opened on that monitor
+// still covers it.
+Item {
+  id: root
+
+  property string omarchyPath: ""
+  property var manifest: null
+
+  readonly property string home: Quickshell.env("HOME")
+  readonly property string pluginDir: decodeURIComponent(String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "")).replace(/\/$/, "")
+  readonly property string fontFamily: Style.font.family
+
+  // ------------------------------------------------------------ config
+
+  property var config: ({})
+  readonly property string screenName: config.screen || "HDMI-A-1"
+  readonly property int idleSeconds: config.idleSeconds || 300
+  readonly property bool privacy: config.privacy === true
+  function moduleOn(name) {
+    var m = config.modules || {}
+    return m[name] !== false
+  }
+
+  FileView {
+    id: configFile
+    path: root.home + "/.config/omarchy/companion-display.json"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      try { root.config = JSON.parse(text()) } catch (e) { root.config = {} }
+      feed.send("refresh")
+    }
+    onLoadFailed: root.config = {}
+  }
+
+  // -------------------------------------------------------------- feed
+
+  property var feedState: ({ phone: {}, chats: [], mail: [], mailNew: 0, apps: [] })
+
+  function applyFeed(line) {
+    var next
+    try { next = JSON.parse(line) } catch (e) { return }
+    var before = root.signature(root.feedState)
+    root.feedState = next
+    if (root.signature(next) !== before) root.markActivity()
+  }
+
+  // Something new arrived: newest chat/mail time or counts changed.
+  function signature(s) {
+    var chats = s.chats || [], mail = s.mail || []
+    return [chats.length, chats.length ? chats[0].ts : 0, mail.length ? mail[0].ts : 0, s.mailNew || 0].join("|")
+  }
+
+  Process {
+    id: feed
+    command: ["python3", root.pluginDir + "/bin/companion-feed"]
+    running: true
+    stdinEnabled: true
+    stdout: SplitParser { onRead: data => root.applyFeed(data) }
+    onExited: feedRestart.start()
+    function send(cmd) { if (running) write(cmd + "\n") }
+  }
+  Timer { id: feedRestart; interval: 5000; onTriggered: feed.running = true }
+
+  // ------------------------------------------------------------ claude
+
+  property var claude: null
+  FileView {
+    path: root.home + "/.local/state/omarchy/agents/usage/claude.json"
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: { try { root.claude = JSON.parse(text()) } catch (e) { root.claude = null } }
+  }
+  function claudeLimit(i) {
+    var l = root.claude && root.claude.limits ? root.claude.limits[i] : null
+    return l ? Math.round(l.percent * 100) : -1
+  }
+
+  // ------------------------------------------------------------- media
+
+  readonly property var player: {
+    var list = Mpris.players ? Mpris.players.values : []
+    var titled = null
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].isPlaying) return list[i]
+      if (!titled && list[i].trackTitle) titled = list[i]
+    }
+    return titled
+  }
+  property bool playerExpanded: false
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: !!root.player && root.player.isPlaying
+    onTriggered: root.player.positionChanged()
+  }
+
+  // ------------------------------------------------- idle + burn-in care
+
+  property real lastActivity: Date.now()
+  property bool idle: false
+  function markActivity() { lastActivity = Date.now(); idle = false }
+
+  Timer {
+    interval: 10000
+    repeat: true
+    running: true
+    onTriggered: root.idle = (Date.now() - root.lastActivity) > root.idleSeconds * 1000
+  }
+
+  // Small, slow shift of the whole layout so no edge stays on the same pixels.
+  property int shiftX: 0
+  property int shiftY: 0
+  Timer {
+    interval: 10 * 60 * 1000
+    repeat: true
+    running: true
+    onTriggered: { root.shiftX = Math.round(Math.random() * 12 - 6); root.shiftY = Math.round(Math.random() * 12 - 6) }
+  }
+
+  // ------------------------------------------------------------ window
+
+  readonly property var targetScreen: {
+    var screens = Quickshell.screens
+    for (var i = 0; i < screens.length; i++)
+      if (screens[i].name === root.screenName) return screens[i]
+    return null
+  }
+
+  PanelWindow {
+    id: window
+    screen: root.targetScreen
+    visible: root.targetScreen !== null
+    color: root.idle ? P.idleBackground : P.background
+    anchors { top: true; bottom: true; left: true; right: true }
+    exclusionMode: ExclusionMode.Normal
+    exclusiveZone: 0
+    WlrLayershell.namespace: "omarchy-companion-display"
+    WlrLayershell.layer: WlrLayer.Bottom
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      onPositionChanged: root.markActivity()
+    }
+
+    // ------------------------------------------------------ active view
+    ColumnLayout {
+      id: active
+      visible: !root.idle
+      anchors.fill: parent
+      anchors.margins: 32
+      anchors.leftMargin: 32 + root.shiftX
+      anchors.rightMargin: 32 - root.shiftX
+      anchors.topMargin: 24 + root.shiftY
+      anchors.bottomMargin: 32 - root.shiftY
+      spacing: P.gap
+
+      // Clock + mail count
+      RowLayout {
+        Layout.fillWidth: true
+        visible: !root.playerExpanded && (root.moduleOn("clock") || root.moduleOn("mail"))
+        spacing: P.gap
+
+        Card {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 120
+          visible: root.moduleOn("clock")
+          ColumnLayout {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: 28
+            spacing: 6
+            Text {
+              id: clock
+              color: "#d4d4d8"
+              font.family: root.fontFamily
+              font.pixelSize: 54
+              font.weight: Font.Medium
+              text: Qt.formatTime(clockTick.now, "HH:mm")
+            }
+            Text {
+              color: P.textMuted
+              font.family: root.fontFamily
+              font.pixelSize: 16
+              text: {
+                var d = clockTick.now.toLocaleDateString(Qt.locale(root.config.locale || "es_CO"), "dddd d 'de' MMMM")
+                return d.charAt(0).toUpperCase() + d.slice(1)
+              }
+            }
+          }
+          Timer {
+            id: clockTick
+            property date now: new Date()
+            interval: 15000
+            repeat: true
+            running: true
+            onTriggered: now = new Date()
+          }
+        }
+
+        Card {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 120
+          visible: root.moduleOn("mail")
+          RowLayout {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: 28
+            spacing: 22
+            Text { text: ""; color: P.blue; font.family: root.fontFamily; font.pixelSize: 36 }
+            ColumnLayout {
+              spacing: 4
+              Text {
+                text: root.feedState.mailNew || 0
+                color: P.textStrong
+                font.family: root.fontFamily
+                font.pixelSize: 50
+                font.weight: Font.DemiBold
+              }
+              Text { text: "correos nuevos"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 16 }
+            }
+          }
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: feed.send("seen")
+          }
+        }
+      }
+
+      // Chats from the phone
+      Card {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.preferredHeight: 1
+        visible: !root.playerExpanded && root.moduleOn("chats")
+        clip: true
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: P.pad
+          anchors.topMargin: 22
+          spacing: 12
+          SectionHeader {
+            Layout.fillWidth: true
+            fontFamily: root.fontFamily
+            glyph: ""
+            glyphColor: P.green
+            label: "Chats · " + (root.feedState.phone.name || "teléfono") + (root.feedState.phone.reachable === false ? " (desconectado)" : "")
+            detail: {
+              var c = root.feedState.chats || [], n = 0
+              for (var i = 0; i < c.length; i++) n += c[i].count
+              return c.length ? c.length + " chats · " + n + " mensajes" : "sin mensajes"
+            }
+          }
+          Repeater {
+            model: root.feedState.chats || []
+            MessageItem {
+              required property var modelData
+              Layout.fillWidth: true
+              fontFamily: root.fontFamily
+              title: modelData.title
+              meta: P.timeLabel(modelData.ts) + (modelData.count > 1 ? " · " + modelData.count : "")
+              preview: root.privacy ? "" : modelData.text
+            }
+          }
+          Item { Layout.fillHeight: true }
+        }
+      }
+
+      // Mail
+      Card {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        Layout.preferredHeight: 1
+        visible: !root.playerExpanded && root.moduleOn("mail")
+        clip: true
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: P.pad
+          anchors.topMargin: 22
+          spacing: 12
+          SectionHeader {
+            Layout.fillWidth: true
+            fontFamily: root.fontFamily
+            glyph: ""
+            glyphColor: P.blue
+            label: "Correo"
+            detail: (root.feedState.mail || []).length ? (root.feedState.mailNew || 0) + " nuevos" : "sin correos"
+          }
+          Repeater {
+            model: root.feedState.mail || []
+            MessageItem {
+              required property var modelData
+              readonly property var parts: P.splitMail(modelData.body)
+              Layout.fillWidth: true
+              fontFamily: root.fontFamily
+              avatarColor: P.mailAvatar
+              avatarTextColor: P.mailAvatarText
+              unread: modelData.new
+              title: modelData.summary
+              meta: P.timeLabel(modelData.ts) + (modelData.source === "phone" ? " · " + modelData.app : "")
+              subject: parts.subject
+              preview: root.privacy ? "" : parts.preview
+            }
+          }
+          Item { Layout.fillHeight: true }
+        }
+      }
+
+      // Other phone apps + Claude
+      RowLayout {
+        Layout.fillWidth: true
+        visible: !root.playerExpanded && (root.moduleOn("apps") || root.moduleOn("claude"))
+        spacing: P.gap
+
+        Card {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 64
+          visible: root.moduleOn("apps")
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            spacing: 14
+            Text { text: ""; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 20 }
+            Text {
+              Layout.fillWidth: true
+              color: P.textSoft
+              font.family: root.fontFamily
+              font.pixelSize: 16
+              elide: Text.ElideRight
+              text: {
+                var a = root.feedState.apps || []
+                if (!a.length) return "Sin otras notificaciones"
+                return a.map(function (x) { return x.app + " " + x.count }).join(" · ")
+              }
+            }
+          }
+        }
+
+        Card {
+          Layout.fillWidth: true
+          Layout.preferredHeight: 64
+          visible: root.moduleOn("claude") && root.claude !== null
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            spacing: 14
+            Text { text: "\u{F06A9}"; color: P.amber; font.family: root.fontFamily; font.pixelSize: 20 }
+            Text {
+              Layout.fillWidth: true
+              color: P.textSoft
+              font.family: root.fontFamily
+              font.pixelSize: 16
+              elide: Text.ElideRight
+              text: {
+                if (!root.claude) return ""
+                var s = root.claudeLimit(0), w = root.claudeLimit(1)
+                var parts = []
+                if (s >= 0) parts.push("5h " + s + "%")
+                if (w >= 0) parts.push("sem " + w + "%")
+                parts.push((root.claude.todaySessions || 0) + " hoy")
+                return "Claude  " + parts.join(" · ")
+              }
+            }
+          }
+        }
+      }
+
+      // Expanded player: summary row on top, big player below
+      RowLayout {
+        Layout.fillWidth: true
+        visible: root.playerExpanded
+        spacing: 16
+        Repeater {
+          model: [
+            { value: Qt.formatTime(clockTick.now, "HH:mm"), label: "hora", color: "#d4d4d8" },
+            { value: String(root.feedState.mailNew || 0), label: "correos", color: P.blue },
+            { value: String((root.feedState.chats || []).length), label: "chats", color: P.green },
+            { value: root.claudeLimit(0) >= 0 ? root.claudeLimit(0) + "%" : "–", label: "Claude", color: P.amber }
+          ]
+          Card {
+            required property var modelData
+            Layout.fillWidth: true
+            Layout.preferredHeight: 84
+            ColumnLayout {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: 20
+              spacing: 2
+              Text { text: modelData.value; color: modelData.color; font.family: root.fontFamily; font.pixelSize: 30 }
+              Text { text: modelData.label; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+            }
+          }
+        }
+      }
+
+      Card {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        visible: root.playerExpanded
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 36
+          spacing: 28
+          RowLayout {
+            Layout.fillWidth: true
+            SectionHeader {
+              Layout.fillWidth: true
+              fontFamily: root.fontFamily
+              glyph: ""
+              glyphColor: P.green
+              label: root.player ? (root.player.identity || "Reproductor") : "Reproductor"
+            }
+            Text {
+              text: "\u{F0294}"
+              color: P.textMuted
+              font.family: root.fontFamily
+              font.pixelSize: 22
+              MouseArea { anchors.fill: parent; anchors.margins: -12; cursorShape: Qt.PointingHandCursor; onClicked: root.playerExpanded = false }
+            }
+          }
+          Item { Layout.fillHeight: true }
+          AlbumArt {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredWidth: Math.min(600, parent.width)
+            Layout.preferredHeight: Layout.preferredWidth
+            radius: 18
+            fontFamily: root.fontFamily
+            source: root.player ? root.player.trackArtUrl : ""
+          }
+          ColumnLayout {
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 8
+            Text {
+              Layout.alignment: Qt.AlignHCenter
+              text: root.player ? (root.player.trackTitle || "") : "Nada sonando"
+              color: P.textStrong
+              font.family: root.fontFamily
+              font.pixelSize: 32
+              font.weight: Font.DemiBold
+            }
+            Text {
+              Layout.alignment: Qt.AlignHCenter
+              text: root.player ? [root.player.trackArtist, root.player.trackAlbum].filter(function (x) { return !!x }).join(" · ") : ""
+              color: P.textMuted
+              font.family: root.fontFamily
+              font.pixelSize: 19
+            }
+          }
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            ProgressLine {
+              Layout.fillWidth: true
+              implicitHeight: 6
+              value: root.player && root.player.length > 0 ? root.player.position / root.player.length : 0
+            }
+            RowLayout {
+              Layout.fillWidth: true
+              Text { text: P.duration(root.player ? root.player.position : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+              Item { Layout.fillWidth: true }
+              Text { text: P.duration(root.player ? root.player.length : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+            }
+          }
+          PlayerControls {
+            Layout.alignment: Qt.AlignHCenter
+            player: root.player
+            size: 1.4
+            fontFamily: root.fontFamily
+          }
+        }
+      }
+
+      // Compact player, always at the very bottom
+      Card {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 92
+        visible: !root.playerExpanded && root.moduleOn("player")
+        RowLayout {
+          anchors.fill: parent
+          anchors.leftMargin: 14
+          anchors.rightMargin: 14
+          spacing: 18
+          AlbumArt {
+            Layout.preferredWidth: 64
+            Layout.preferredHeight: 64
+            fontFamily: root.fontFamily
+            source: root.player ? root.player.trackArtUrl : ""
+          }
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 10
+              Text {
+                text: root.player ? (root.player.trackTitle || "") : "Nada sonando"
+                color: P.textStrong
+                font.family: root.fontFamily
+                font.pixelSize: 18
+                font.weight: Font.Medium
+                elide: Text.ElideRight
+                Layout.maximumWidth: 380
+              }
+              Text {
+                Layout.fillWidth: true
+                text: root.player ? (root.player.trackArtist || "") : ""
+                color: P.textMuted
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                elide: Text.ElideRight
+              }
+            }
+            ProgressLine {
+              Layout.fillWidth: true
+              value: root.player && root.player.length > 0 ? root.player.position / root.player.length : 0
+            }
+          }
+          PlayerControls {
+            player: root.player
+            fontFamily: root.fontFamily
+          }
+          Text {
+            text: "\u{F0293}"
+            color: P.textMuted
+            font.family: root.fontFamily
+            font.pixelSize: 22
+            MouseArea { anchors.fill: parent; anchors.margins: -12; cursorShape: Qt.PointingHandCursor; onClicked: root.playerExpanded = true }
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------- idle view
+    Item {
+      id: idleView
+      anchors.fill: parent
+      visible: root.idle
+
+      Column {
+        id: idleBlock
+        spacing: 14
+        x: (idleView.width - width) / 2
+        y: (idleView.height - height) / 2
+
+        Text {
+          anchors.horizontalCenter: parent.horizontalCenter
+          text: Qt.formatTime(clockTick.now, "HH:mm")
+          color: P.idleText
+          font.family: root.fontFamily
+          font.pixelSize: 72
+        }
+        Text {
+          anchors.horizontalCenter: parent.horizontalCenter
+          color: P.idleTextSoft
+          font.family: root.fontFamily
+          font.pixelSize: 17
+          text: {
+            var parts = []
+            if (root.feedState.mailNew) parts.push("Correo " + root.feedState.mailNew)
+            var chats = (root.feedState.chats || []).length
+            if (chats) parts.push("Chats " + chats)
+            if (root.player && root.player.isPlaying)
+              parts.push((root.player.trackTitle || "") + (root.player.trackArtist ? " — " + root.player.trackArtist : ""))
+            return parts.join("   ")
+          }
+        }
+      }
+
+      // Move the block every few minutes.
+      Timer {
+        interval: 3 * 60 * 1000
+        repeat: true
+        running: root.idle
+        triggeredOnStart: true
+        onTriggered: {
+          idleBlock.x = Math.random() * Math.max(0, idleView.width - idleBlock.width - 80) + 40
+          idleBlock.y = Math.random() * Math.max(0, idleView.height - idleBlock.height - 80) + 40
+        }
+      }
+    }
+  }
+}

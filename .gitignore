@@ -5,3 +5,4 @@ config.local.json
 *.key
 # Screenshots with real data
 screenshots/private/
+__pycache__/

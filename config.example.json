@@ -1,0 +1,19 @@
+{
+  "screen": "HDMI-A-1",
+  "locale": "es_CO",
+  "idleSeconds": 300,
+  "privacy": false,
+  "chatApps": ["WhatsApp", "WhatsApp Business", "Telegram", "Signal", "Messages"],
+  "mailApps": ["BlueMail"],
+  "phoneMailApps": ["Outlook", "Gmail", "BlueMail"],
+  "ignoreApps": [],
+  "mailHistory": 30,
+  "modules": {
+    "clock": true,
+    "mail": true,
+    "chats": true,
+    "apps": true,
+    "player": true,
+    "claude": true
+  }
+}

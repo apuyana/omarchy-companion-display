@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""Data feed for the Omarchy companion display.
+
+Collects phone notifications from KDE Connect and mail notifications posted
+on the desktop, and prints the combined state as one JSON object per line on
+stdout every time it changes. Reads simple commands from stdin:
+
+    seen        mark every mail as seen (resets the "new" count)
+    refresh     re-read everything now
+
+Only depends on the Python standard library and PyGObject (Gio), which ship
+with Omarchy.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+KDECONNECT = "org.kde.kdeconnect"
+NOTIF_IFACE = "org.kde.kdeconnect.device.notifications"
+NOTIF_ITEM_IFACE = NOTIF_IFACE + ".notification"
+DEVICE_IFACE = "org.kde.kdeconnect.device"
+
+CONFIG_PATH = os.path.expanduser("~/.config/omarchy/companion-display.json")
+STATE_DIR = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "omarchy-companion-display",
+)
+MAIL_STATE = os.path.join(STATE_DIR, "mail.json")
+
+DEFAULTS = {
+    "chatApps": ["WhatsApp", "WhatsApp Business", "Telegram", "Signal", "Messages"],
+    "mailApps": ["BlueMail"],
+    "phoneMailApps": ["Outlook", "Gmail", "BlueMail"],
+    "ignoreApps": [],
+    "mailHistory": 30,
+}
+
+
+def load_config():
+    cfg = dict(DEFAULTS)
+    try:
+        with open(CONFIG_PATH) as f:
+            user = json.load(f)
+        for key in DEFAULTS:
+            if key in user:
+                cfg[key] = user[key]
+    except (OSError, ValueError):
+        pass
+    return cfg
+
+
+def lower_set(items):
+    return {str(x).lower() for x in items}
+
+
+class Feed:
+    def __init__(self):
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.config = load_config()
+        # First time we saw each phone notification, keyed by device/id, so
+        # chats and mail can be sorted and timestamped.
+        self.first_seen = {}
+        self.phone = {"name": "", "reachable": False}
+        self.phone_items = []
+        self.desktop_mail = []
+        self.seen_at = 0
+        self.last_output = None
+        self.refresh_pending = False
+        self.load_mail_state()
+
+    # ----------------------------------------------------------- persistence
+
+    def load_mail_state(self):
+        try:
+            with open(MAIL_STATE) as f:
+                data = json.load(f)
+            self.desktop_mail = data.get("mail", [])
+            self.seen_at = data.get("seenAt", 0)
+            self.first_seen = data.get("phoneFirstSeen", {})
+        except (OSError, ValueError):
+            pass
+
+    def save_mail_state(self):
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = MAIL_STATE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"seenAt": self.seen_at, "mail": self.desktop_mail,
+                       "phoneFirstSeen": self.first_seen}, f)
+        os.replace(tmp, MAIL_STATE)
+
+    # ------------------------------------------------------------ D-Bus utils
+
+    def call(self, path, iface, method, args=None, reply="(v)"):
+        result = self.bus.call_sync(
+            KDECONNECT, path, iface, method, args,
+            GLib.VariantType.new(reply), Gio.DBusCallFlags.NONE, 3000, None,
+        )
+        return result.unpack()
+
+    def prop(self, path, iface, name):
+        return self.call(
+            path, "org.freedesktop.DBus.Properties", "Get",
+            GLib.Variant("(ss)", (iface, name)),
+        )[0]
+
+    def all_props(self, path, iface):
+        return self.call(
+            path, "org.freedesktop.DBus.Properties", "GetAll",
+            GLib.Variant("(s)", (iface,)), "(a{sv})",
+        )[0]
+
+    # --------------------------------------------------------- KDE Connect
+
+    def read_phone(self):
+        items = []
+        phone = {"name": "", "reachable": False}
+        try:
+            devices = self.call(
+                "/modules/kdeconnect", "org.kde.kdeconnect.daemon", "devices",
+                GLib.Variant("(bb)", (False, True)), "(as)",
+            )[0]
+        except GLib.Error:
+            devices = []
+
+        now = time.time()
+        before = dict(self.first_seen)
+        live = set()
+        for dev in devices:
+            base = "/modules/kdeconnect/devices/" + dev
+            try:
+                reachable = bool(self.prop(base, DEVICE_IFACE, "isReachable"))
+                name = str(self.prop(base, DEVICE_IFACE, "name"))
+            except GLib.Error:
+                continue
+            # Show the first reachable device, else the first paired one.
+            if not phone["name"] or (reachable and not phone["reachable"]):
+                phone = {"name": name, "reachable": reachable}
+            try:
+                ids = self.call(base + "/notifications", NOTIF_IFACE,
+                                "activeNotifications", None, "(as)")[0]
+            except GLib.Error:
+                continue
+            for nid in ids:
+                try:
+                    p = self.all_props(base + "/notifications/" + nid, NOTIF_ITEM_IFACE)
+                except GLib.Error:
+                    continue
+                key = dev + "/" + nid
+                live.add(key)
+                ts = self.first_seen.setdefault(key, now)
+                items.append({
+                    "key": key,
+                    "app": str(p.get("appName", "")),
+                    "title": str(p.get("title", "")),
+                    "text": str(p.get("text", "")),
+                    "group": str(p.get("groupName", "")),
+                    "isGroup": bool(p.get("isGroupConversation", False)),
+                    "ts": ts,
+                })
+        self.first_seen = {k: v for k, v in self.first_seen.items() if k in live}
+        if self.first_seen != before:
+            self.save_mail_state()
+        self.phone = phone
+        self.phone_items = items
+
+    # --------------------------------------------------- desktop mail notify
+
+    def on_desktop_notify(self, app, summary, body):
+        cfg = self.config
+        if app.lower() not in lower_set(cfg["mailApps"]):
+            return
+        self.desktop_mail.insert(0, {
+            "app": app, "summary": summary, "body": body,
+            "ts": time.time(), "source": "desktop",
+        })
+        del self.desktop_mail[int(cfg["mailHistory"]):]
+        self.save_mail_state()
+        self.emit()
+
+    def watch_desktop_notifications(self):
+        match = ("type='method_call',interface='org.freedesktop.Notifications',"
+                 "member='Notify'")
+        proc = subprocess.Popen(
+            ["busctl", "--user", "monitor", "--json=short", "--match", match],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+        )
+        for line in proc.stdout:
+            try:
+                msg = json.loads(line)
+                data = msg["payload"]["data"]
+                app, summary, body = str(data[0]), str(data[3]), str(data[4])
+            except (ValueError, KeyError, IndexError, TypeError):
+                continue
+            GLib.idle_add(self.on_desktop_notify, app, summary, body)
+
+    # ------------------------------------------------------------- output
+
+    def build_state(self):
+        cfg = self.config
+        chat_apps = lower_set(cfg["chatApps"])
+        phone_mail_apps = lower_set(cfg["phoneMailApps"])
+        ignore = lower_set(cfg["ignoreApps"])
+
+        chats = {}
+        mail = list(self.desktop_mail)
+        apps = {}
+        for n in self.phone_items:
+            app = n["app"].lower()
+            if app in ignore:
+                continue
+            if app in chat_apps:
+                title = n["group"] if n["isGroup"] and n["group"] else n["title"]
+                chat = chats.setdefault((n["app"], title), {
+                    "app": n["app"], "title": title, "text": "", "count": 0, "ts": 0,
+                })
+                chat["count"] += 1
+                if n["ts"] >= chat["ts"]:
+                    chat["ts"] = n["ts"]
+                    sender = n["title"] if n["isGroup"] and n["title"] != title else ""
+                    chat["text"] = (sender + ": " if sender else "") + n["text"]
+            elif app in phone_mail_apps:
+                mail.append({
+                    "app": n["app"], "summary": n["title"], "body": n["text"],
+                    "ts": n["ts"], "source": "phone",
+                })
+            else:
+                apps[n["app"]] = apps.get(n["app"], 0) + 1
+
+        mail.sort(key=lambda m: m["ts"], reverse=True)
+        for m in mail:
+            m["new"] = m["ts"] > self.seen_at
+        return {
+            "phone": self.phone,
+            "chats": sorted(chats.values(), key=lambda c: c["ts"], reverse=True),
+            "mail": mail[: int(cfg["mailHistory"])],
+            "mailNew": sum(1 for m in mail if m["new"]),
+            "apps": [{"app": a, "count": c}
+                     for a, c in sorted(apps.items(), key=lambda kv: -kv[1])],
+        }
+
+    def emit(self):
+        out = json.dumps(self.build_state(), ensure_ascii=False)
+        if out != self.last_output:
+            self.last_output = out
+            sys.stdout.write(out + "\n")
+            sys.stdout.flush()
+        return False
+
+    def refresh(self):
+        self.refresh_pending = False
+        self.config = load_config()
+        self.read_phone()
+        self.emit()
+        return False
+
+    def schedule_refresh(self, *_):
+        # Bursts of KDE Connect signals collapse into one read.
+        if not self.refresh_pending:
+            self.refresh_pending = True
+            GLib.timeout_add(300, self.refresh)
+
+    # ------------------------------------------------------------- commands
+
+    def on_command(self, line):
+        cmd = line.strip()
+        if cmd == "seen":
+            self.seen_at = time.time()
+            self.save_mail_state()
+            self.emit()
+        elif cmd == "refresh":
+            self.refresh()
+        return False
+
+    def read_stdin(self):
+        for line in sys.stdin:
+            GLib.idle_add(self.on_command, line)
+        GLib.idle_add(self.loop.quit)
+
+    # ---------------------------------------------------------------- main
+
+    def run(self):
+        self.loop = GLib.MainLoop()
+        for iface in (NOTIF_IFACE, DEVICE_IFACE, "org.kde.kdeconnect.daemon"):
+            self.bus.signal_subscribe(
+                None, iface, None, None, None,
+                Gio.DBusSignalFlags.NONE, self.schedule_refresh,
+            )
+        # NameOwnerChanged: KDE Connect restarting.
+        self.bus.signal_subscribe(
+            "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+            "/org/freedesktop/DBus", KDECONNECT, Gio.DBusSignalFlags.NONE,
+            self.schedule_refresh,
+        )
+        GLib.timeout_add_seconds(60, lambda: (self.schedule_refresh(), True)[1])
+        threading.Thread(target=self.watch_desktop_notifications, daemon=True).start()
+        threading.Thread(target=self.read_stdin, daemon=True).start()
+        self.refresh()
+        self.loop.run()
+
+
+if __name__ == "__main__":
+    try:
+        Feed().run()
+    except KeyboardInterrupt:
+        pass

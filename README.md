@@ -2,15 +2,63 @@
 
 An always-on companion display for a secondary (vertical) monitor on [Omarchy](https://omarchy.org/).
 
-Planned modules:
+It turns a spare screen into a quiet, glanceable dashboard:
 
-- **Phone notifications** via KDE Connect, grouped by chat (WhatsApp, etc.)
-- **Mail summary** built from desktop mail notifications (any client)
-- **Media player** (MPRIS): compact bar that expands to a full player
-- **Idle mode** that dims the panel and shifts content to avoid burn-in
-- Optional: Paperclip tasks, Claude Code session status
+- **Chats from your phone** via [KDE Connect](https://kdeconnect.kde.org/): WhatsApp, Telegram, Signal… grouped by chat with the latest message. They disappear when you read them on the phone.
+- **Mail** built from notifications: desktop mail clients (e.g. BlueMail) and mail apps on the phone (Outlook, Gmail) via KDE Connect. No credentials needed. Click the counter to mark everything as seen.
+- **Other phone notifications**, counted per app.
+- **Media player** (any MPRIS player: Spotify, the phone through KDE Connect, browsers): a compact bar at the bottom that expands to a full player.
+- **Claude usage** from Omarchy's agents usage records (optional).
+- **Burn-in care**: dark palette with no white areas, a slow pixel shift, and an idle mode (pure black, small dim block that moves around) after a few minutes without news.
 
-Status: work in progress.
+## Requirements
+
+- Omarchy with the Quickshell-based shell (plugin support)
+- `kdeconnect` paired with your phone, for chats and phone notifications
+- Python 3 with PyGObject (ships with Omarchy)
+
+## Install
+
+```bash
+omarchy plugin add https://github.com/apuyana/omarchy-companion-display.git --enable
+cp ~/.config/omarchy/plugins/apuyana.companion-display/config.example.json ~/.config/omarchy/companion-display.json
+```
+
+Then set `screen` in `~/.config/omarchy/companion-display.json` to the monitor you want (see `hyprctl monitors`). The config is reloaded on save.
+
+For development, link your checkout instead:
+
+```bash
+ln -s ~/path/to/omarchy-companion-display ~/.config/omarchy/plugins/apuyana.companion-display
+omarchy-shell shell rescanPlugins && omarchy plugin enable apuyana.companion-display
+```
+
+QML changes need `omarchy restart shell` to show up, because the panel stays loaded.
+
+## Configuration
+
+`~/.config/omarchy/companion-display.json`:
+
+| Key | Default | What it does |
+|---|---|---|
+| `screen` | `HDMI-A-1` | Monitor name to draw on |
+| `locale` | `es_CO` | Locale for the date |
+| `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode |
+| `privacy` | `false` | Hide message and mail text, show only senders and counts |
+| `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
+| `mailApps` | `["BlueMail"]` | Desktop apps whose notifications count as mail |
+| `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |
+| `ignoreApps` | `[]` | Phone apps to leave out |
+| `mailHistory` | `30` | Desktop mails kept |
+| `modules` | all `true` | Turn sections off: `clock`, `mail`, `chats`, `apps`, `player`, `claude` |
+
+### Phone shows "Sensitive notification content hidden"
+
+Android hides the content of some notifications from KDE Connect. On the phone, allow sensitive notification content (Settings › Notifications, or the app's own notification settings) to see senders and text.
+
+## How it works
+
+`bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, and prints the combined state as JSON lines. `Panel.qml` runs it, draws the panel on the Bottom layer of the chosen monitor (windows on that monitor still cover it), and reads MPRIS and the Claude usage record directly. Mail state lives in `~/.local/state/omarchy-companion-display/`.
 
 ## License
 
