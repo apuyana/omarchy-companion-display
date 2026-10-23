@@ -771,6 +771,28 @@ Item {
           cursorShape: Qt.PointingHandCursor
           onClicked: root.claudeExpanded = !root.claudeExpanded
         }
+
+        // The Claude icon opens Claude Desktop.
+        MouseArea {
+          anchors.left: parent.left
+          anchors.top: parent.top
+          width: 60
+          height: 64
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.openClaude()
+          Rectangle {
+            anchors.centerIn: parent
+            anchors.horizontalCenterOffset: 4
+            width: 40
+            height: 40
+            radius: 20
+            // Drawn over the icon, so only a ring.
+            color: "transparent"
+            border.width: parent.containsMouse ? 1 : 0
+            border.color: P.textMuted
+          }
+        }
       }
 
       // Expanded player: summary row on top, big player below
