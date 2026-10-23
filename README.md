@@ -1,21 +1,28 @@
 # omarchy-companion-display
 
-An always-on companion display for a secondary (vertical) monitor on [Omarchy](https://omarchy.org/).
+An always-on companion display for a secondary monitor on [Omarchy](https://omarchy.org/), built for a vertical screen.
 
-It turns a spare screen into a quiet, glanceable dashboard:
+It turns a spare screen into a quiet, glanceable dashboard. Every section is optional, and the ones that need something you don't have hide themselves.
 
-- **Chats from your phone** via [KDE Connect](https://kdeconnect.kde.org/): WhatsApp, Telegram, Signal… grouped by chat with the latest message. They disappear when you read them on the phone; hover one and press ✕ to dismiss it on the phone too.
-- **Mail** built from notifications: desktop mail clients (e.g. BlueMail) and mail apps on the phone (Outlook, Gmail) via KDE Connect. No credentials needed. Click the counter to mark everything as seen.
-- **Other phone notifications**, counted per app.
-- **Media player** (any MPRIS player: Spotify, the phone through KDE Connect, browsers): a compact bar at the bottom that expands to a full player.
-- **Claude Code sessions**: a one-line counter at the bottom (working, done, waiting, idle) that expands to list every open session and how long ago it changed, plus usage limits from Omarchy's agents usage records.
-- **Burn-in care**: dark palette with no white areas, a slow pixel shift, and an idle mode (pure black, small dim block that moves around) after a few minutes without news.
+| Section | Needs | Shows |
+|---|---|---|
+| Clock | – | Time and date |
+| Mail | A mail client that posts desktop notifications, and/or a mail app on your phone | New-mail counter and the latest mails with sender, subject and preview |
+| Phone notifications | [KDE Connect](https://kdeconnect.kde.org/) paired with your phone | Total count per app |
+| Chats | KDE Connect | WhatsApp, Telegram, Signal… grouped by chat with the latest message |
+| Paperclip | A [Paperclip](https://github.com/paperclipai/paperclip) instance and a board API key | Task counts, agent availability, latest blocked and in-review tasks |
+| Claude Code | [Claude Code](https://claude.com/claude-code) | Sessions working, done, waiting or idle, plus usage limits |
+| Player | Any MPRIS player (Spotify, browsers, your phone through KDE Connect) | Now playing with controls |
+
+Burn-in care is built in: a dark palette with no white areas, a slow pixel shift, an idle mode (pure black with a small dim block that moves around), and an option to cover the Omarchy bar on that monitor.
+
+> **Provided as is.** This is a personal project shared in case it is useful. Issues and pull requests are welcome, but there is no promise of support or of keeping up with every Omarchy release.
 
 ## Requirements
 
 - Omarchy with the Quickshell-based shell (plugin support)
-- `kdeconnect` paired with your phone, for chats and phone notifications
 - Python 3 with PyGObject (ships with Omarchy)
+- Optional: `kdeconnect` paired with your phone, Claude Code, a Paperclip instance
 
 ## Install
 
@@ -24,16 +31,20 @@ omarchy plugin add https://github.com/apuyana/omarchy-companion-display.git --en
 cp ~/.config/omarchy/plugins/apuyana.companion-display/config.example.json ~/.config/omarchy/companion-display.json
 ```
 
-Then set `screen` in `~/.config/omarchy/companion-display.json` to the monitor you want (see `hyprctl monitors`). The config is reloaded on save.
+Then set `screen` in `~/.config/omarchy/companion-display.json` to the monitor you want (`hyprctl monitors` lists them). The config reloads on save.
 
-For development, link your checkout instead:
+The panel sits on the Bottom layer of that monitor, so windows you open there still cover it.
 
-```bash
-ln -s ~/path/to/omarchy-companion-display ~/.config/omarchy/plugins/apuyana.companion-display
-omarchy-shell shell rescanPlugins && omarchy plugin enable apuyana.companion-display
-```
+## Using it
 
-QML changes need `omarchy restart shell` to show up, because the panel stays loaded.
+- **Mail counter or mail section**: opens your mail app (BlueMail by default) and marks every mail as seen.
+- **Chats section**: opens your chat app (WhatsApp web by default).
+- **A chat or a mail**: hover it and press ✕ to dismiss it. Phone notifications are dismissed on the phone too.
+- **Paperclip task**: opens it in the browser.
+- **Claude bar**: the icon opens Claude Desktop; the rest of the bar expands the list of every session.
+- **Player bar**: the buttons control playback, the expand button switches to a full player, and the rest of the bar opens your player app (Spotify by default).
+
+**Idle mode** starts after `idleSeconds` without news or mouse movement over the panel. It wakes up on a new chat, mail or phone notification, when Claude Code finishes its last working session, or when you move the mouse over it.
 
 ## Configuration
 
@@ -41,25 +52,38 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 
 | Key | Default | What it does |
 |---|---|---|
-| `screen` | `HDMI-A-1` | Monitor name to draw on |
+| `screen` | `HDMI-A-1` | Monitor to draw on |
 | `locale` | `en_US` | Locale for the date |
 | `dateFormat` | `dddd, MMMM d` | Qt date format under the clock |
-| `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode. News: a new chat, mail or phone notification, or Claude Code finishing its last working session |
+| `idleSeconds` | `300` | Seconds without news before idle mode |
 | `privacy` | `false` | Hide message and mail text, show only senders and counts |
-| `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip (burn-in) |
+| `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
 | `mailApps` | `["BlueMail"]` | Desktop apps whose notifications count as mail |
 | `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
+| `launch` | see `config.example.json` | Command run when clicking `mail`, `chats`, `claude` or `player`; `[]` disables the click |
 | `paperclip` | `{}` | Paperclip instance, see below |
 | `claude.expanded` | `false` | Start with the Claude session list open |
 | `claude.doneMinutes` | `15` | Minutes a finished session shows as "done" before it turns idle |
-| `modules` | all `true` | Turn sections off: `clock`, `paperclip`, `mail`, `chats`, `apps`, `player`, `claude` |
+| `modules` | all `true` | Turn sections off: `clock`, `mail`, `apps`, `chats`, `paperclip`, `claude`, `player` |
 
-### Paperclip (optional)
+### Turning sections off
 
-Shows task counts (blocked, in review, in progress, pending approvals), agent availability and the latest blocked or in-review tasks from a [Paperclip](https://github.com/paperclipai/paperclip) instance. Add to the config:
+Sections hide on their own when their source is missing: chats and phone notifications without a paired KDE Connect device, Paperclip without a `paperclip.url`, Claude without any Claude Code sessions or usage data. To hide a section you could use but don't want, set it to `false` under `modules`:
+
+```json
+"modules": { "paperclip": false, "claude": false }
+```
+
+### Mail
+
+Mail is read from notifications, so no mail credentials are needed. Desktop mail clients are matched by the app name in `mailApps`; phone mail apps by `phoneMailApps`. The client has to show desktop notifications for new mail.
+
+### Paperclip
+
+Add your instance to the config:
 
 ```json
 "paperclip": {
@@ -77,7 +101,7 @@ It needs a board API key in `~/.config/omarchy/companion-display-paperclip.token
 ~/.config/omarchy/plugins/apuyana.companion-display/bin/paperclip-create-key https://paperclip.example.com
 ```
 
-The key is named `companion-display`, expires in a year by default, and is never printed. The panel only reads from Paperclip, but a board key has your full board permissions, so keep the file private.
+The key is named `companion-display`, expires in a year by default, and is never printed. The panel only reads from Paperclip, but a board key carries your full board permissions, so keep the file private.
 
 ### Phone shows "Sensitive notification content hidden"
 
@@ -85,7 +109,18 @@ Android hides the content of some notifications from KDE Connect. On the phone, 
 
 ## How it works
 
-`bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, and prints the combined state as JSON lines. `Panel.qml` runs it, draws the panel on the Bottom layer of the chosen monitor (windows on that monitor still cover it), and reads MPRIS and the Claude usage record directly. Mail state lives in `~/.local/state/omarchy-companion-display/`.
+`bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, watches Claude Code's session files in `~/.claude/sessions`, polls Paperclip, and prints the combined state as JSON lines. `Panel.qml` runs it and draws the panel; it reads MPRIS and Omarchy's Claude usage record (`~/.local/state/omarchy/agents/usage/claude.json`) directly. Mail state lives in `~/.local/state/omarchy-companion-display/`.
+
+## Development
+
+Link your checkout instead of installing:
+
+```bash
+ln -s ~/path/to/omarchy-companion-display ~/.config/omarchy/plugins/apuyana.companion-display
+omarchy-shell shell rescanPlugins && omarchy plugin enable apuyana.companion-display
+```
+
+QML changes need `omarchy restart shell`, because the panel stays loaded.
 
 ## License
 

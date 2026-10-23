@@ -47,6 +47,8 @@ Item {
   // -------------------------------------------------------------- feed
 
   property var feedState: ({ phone: {}, chats: [], mail: [], mailNew: 0, apps: [] })
+  // Phone sections hide themselves on machines without a paired KDE Connect device.
+  readonly property bool hasPhone: !!(feedState.phone && feedState.phone.name)
 
   function applyFeed(line) {
     var next
@@ -97,10 +99,24 @@ Item {
     opener.command = args
     opener.running = true
   }
-  function openWhatsApp() { openApp(["omarchy-launch-or-focus-webapp", "web.whatsapp.com", "https://web.whatsapp.com/"]) }
-  function openSpotify() { openApp(["omarchy-launch-or-focus", "^spotify$", "spotify"]) }
-  function openClaude() { openApp(["omarchy-launch-or-focus", "^com.anthropic.Claude$", "claude-desktop"]) }
-  function openMail() { openApp(["omarchy-launch-or-focus", "BlueMail", "bluemail"]) }
+  // Commands run when a section is clicked; override them under "launch" in
+  // the config. An empty list disables the click.
+  readonly property var defaultLaunch: ({
+    chats: ["omarchy-launch-or-focus-webapp", "web.whatsapp.com", "https://web.whatsapp.com/"],
+    player: ["omarchy-launch-or-focus", "^spotify$", "spotify"],
+    claude: ["omarchy-launch-or-focus", "^com.anthropic.Claude$", "claude-desktop"],
+    mail: ["omarchy-launch-or-focus", "BlueMail", "bluemail"]
+  })
+  function launch(name) {
+    var custom = root.config.launch || {}
+    var cmd = custom[name] !== undefined ? custom[name] : root.defaultLaunch[name]
+    if (cmd && cmd.length) openApp(cmd)
+  }
+  function openWhatsApp() { launch("chats") }
+  function openSpotify() { launch("player") }
+  function openClaude() { launch("claude") }
+  // Opening the mail app also marks every mail as seen.
+  function openMail() { feed.send("seen"); launch("mail") }
 
   // ------------------------------------------------------------ claude
 
@@ -365,7 +381,7 @@ Item {
           Layout.fillWidth: true
           Layout.preferredWidth: 1
           Layout.preferredHeight: 120
-          visible: root.moduleOn("apps")
+          visible: root.moduleOn("apps") && root.hasPhone
           readonly property var apps: root.feedState.apps || []
           readonly property int total: {
             var n = 0
@@ -544,7 +560,7 @@ Item {
         Layout.preferredHeight: chatsCol.implicitHeight + 22 + P.pad
         Layout.maximumHeight: chatsCol.implicitHeight + 22 + P.pad
         Layout.minimumHeight: 0
-        visible: !root.playerExpanded && root.moduleOn("chats")
+        visible: !root.playerExpanded && root.moduleOn("chats") && root.hasPhone
         clip: true
         MouseArea {
           anchors.fill: parent

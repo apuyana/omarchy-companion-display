@@ -41,5 +41,27 @@
   "claude": {
     "doneMinutes": 15,
     "expanded": false
+  },
+  "launch": {
+    "mail": [
+      "omarchy-launch-or-focus",
+      "BlueMail",
+      "bluemail"
+    ],
+    "chats": [
+      "omarchy-launch-or-focus-webapp",
+      "web.whatsapp.com",
+      "https://web.whatsapp.com/"
+    ],
+    "player": [
+      "omarchy-launch-or-focus",
+      "^spotify$",
+      "spotify"
+    ],
+    "claude": [
+      "omarchy-launch-or-focus",
+      "^com.anthropic.Claude$",
+      "claude-desktop"
+    ]
   }
 }
