@@ -11,9 +11,6 @@
     "Signal",
     "Messages"
   ],
-  "mailApps": [
-    "BlueMail"
-  ],
   "phoneMailApps": [
     "Outlook",
     "Gmail",
@@ -43,11 +40,6 @@
     "expanded": false
   },
   "launch": {
-    "mail": [
-      "omarchy-launch-or-focus",
-      "BlueMail",
-      "bluemail"
-    ],
     "chats": [
       "omarchy-launch-or-focus-webapp",
       "web.whatsapp.com",

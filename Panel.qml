@@ -105,7 +105,7 @@ Item {
     chats: ["omarchy-launch-or-focus-webapp", "web.whatsapp.com", "https://web.whatsapp.com/"],
     player: ["omarchy-launch-or-focus", "^spotify$", "spotify"],
     claude: ["omarchy-launch-or-focus", "^com.anthropic.Claude$", "claude-desktop"],
-    mail: ["omarchy-launch-or-focus", "BlueMail", "bluemail"]
+    mail: [root.pluginDir + "/bin/open-default-app", "x-scheme-handler/mailto"]
   })
   function launch(name) {
     var custom = root.config.launch || {}
@@ -115,7 +115,8 @@ Item {
   function openWhatsApp() { launch("chats") }
   function openSpotify() { launch("player") }
   function openClaude() { launch("claude") }
-  // Opening the mail app also marks every mail as seen.
+  // Opening the mail app (the system default mail client unless configured)
+  // also marks every mail as seen.
   function openMail() { feed.send("seen"); launch("mail") }
 
   // ------------------------------------------------------------ claude

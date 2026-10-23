@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Open (or focus, if already open) the system default app for a MIME type or
+# URL scheme, e.g. x-scheme-handler/mailto for the default mail client.
+#
+# Usage: open-default-app <mime-type>
+
+set -euo pipefail
+
+mime="${1:?usage: open-default-app <mime-type>}"
+desktop=$(xdg-mime query default "$mime" 2>/dev/null || true)
+if [[ -z "$desktop" ]]; then
+  notify-send -a "Companion Display" "No default app for $mime" 2>/dev/null || true
+  exit 1
+fi
+
+# Find the desktop file to read the window class the app uses.
+file=""
+IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+for dir in "${dirs[@]}"; do
+  if [[ -f "$dir/applications/$desktop" ]]; then
+    file="$dir/applications/$desktop"
+    break
+  fi
+done
+
+class=""
+[[ -n "$file" ]] && class=$(sed -n 's/^StartupWMClass=//p' "$file" | head -n1)
+class="${class:-${desktop%.desktop}}"
+
+if command -v omarchy-launch-or-focus >/dev/null; then
+  exec omarchy-launch-or-focus "$class" "uwsm-app -- $desktop"
+fi
+exec setsid gtk-launch "$desktop"

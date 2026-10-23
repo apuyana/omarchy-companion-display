@@ -37,7 +37,7 @@ The panel sits on the Bottom layer of that monitor, so windows you open there st
 
 ## Using it
 
-- **Mail counter or mail section**: opens your mail app (BlueMail by default) and marks every mail as seen.
+- **Mail counter or mail section**: opens your default mail client and marks every mail as seen.
 - **Chats section**: opens your chat app (WhatsApp web by default).
 - **A chat or a mail**: hover it and press ✕ to dismiss it. Phone notifications are dismissed on the phone too.
 - **Paperclip task**: opens it in the browser.
@@ -59,11 +59,11 @@ The panel sits on the Bottom layer of that monitor, so windows you open there st
 | `privacy` | `false` | Hide message and mail text, show only senders and counts |
 | `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
-| `mailApps` | `["BlueMail"]` | Desktop apps whose notifications count as mail |
+| `mailApps` | your default mail client | Desktop apps whose notifications count as mail |
 | `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
-| `launch` | see `config.example.json` | Command run when clicking `mail`, `chats`, `claude` or `player`; `[]` disables the click |
+| `launch` | see below | Command run when clicking `mail`, `chats`, `claude` or `player`; `[]` disables the click |
 | `paperclip` | `{}` | Paperclip instance, see below |
 | `claude.expanded` | `false` | Start with the Claude session list open |
 | `claude.doneMinutes` | `15` | Minutes a finished session shows as "done" before it turns idle |
@@ -79,7 +79,20 @@ Sections hide on their own when their source is missing: chats and phone notific
 
 ### Mail
 
-Mail is read from notifications, so no mail credentials are needed. Desktop mail clients are matched by the app name in `mailApps`; phone mail apps by `phoneMailApps`. The client has to show desktop notifications for new mail.
+Mail is read from notifications, so no mail credentials are needed. The client has to show desktop notifications for new mail.
+
+By default the panel uses your system default mail client (the `mailto:` handler, see `xdg-mime query default x-scheme-handler/mailto`): its notifications count as mail, and clicking the mail section opens it, or focuses it if it is already open. To use something else, set the notification app names and the command yourself:
+
+```json
+"mailApps": ["Thunderbird"],
+"launch": { "mail": ["omarchy-launch-or-focus", "thunderbird", "thunderbird"] }
+```
+
+Phone mail apps are matched by `phoneMailApps`.
+
+### Click commands
+
+`launch` maps each clickable section to a command. Defaults: `mail` opens the default mail client, `chats` opens WhatsApp web, `player` opens Spotify, `claude` opens Claude Desktop. `bin/open-default-app <mime-type>` opens or focuses the default app for any MIME type, for example `x-scheme-handler/http` for the browser.
 
 ### Paperclip
 

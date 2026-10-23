@@ -45,7 +45,7 @@ CLAUDE_SESSIONS = os.path.expanduser("~/.claude/sessions")
 
 DEFAULTS = {
     "chatApps": ["WhatsApp", "WhatsApp Business", "Telegram", "Signal", "Messages"],
-    "mailApps": ["BlueMail"],
+    "mailApps": None,  # None: the system default mail client
     "phoneMailApps": ["Outlook", "Gmail", "BlueMail"],
     "ignoreApps": [],
     "mailHistory": 30,
@@ -63,7 +63,37 @@ def load_config():
                 cfg[key] = user[key]
     except (OSError, ValueError):
         pass
+    if cfg["mailApps"] is None:
+        cfg["mailApps"] = default_mail_app_names()
     return cfg
+
+
+def default_mail_app_names():
+    """Names the default mailto handler may use as notification app name."""
+    try:
+        desktop = subprocess.run(
+            ["xdg-mime", "query", "default", "x-scheme-handler/mailto"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if not desktop:
+        return []
+    names = {desktop[:-len(".desktop")] if desktop.endswith(".desktop") else desktop}
+    data_dirs = [os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))]
+    data_dirs += os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+    for base in data_dirs:
+        path = os.path.join(base, "applications", desktop)
+        if not os.path.isfile(path):
+            continue
+        with open(path, errors="replace") as f:
+            for line in f:
+                key, _, value = line.strip().partition("=")
+                if key in ("Name", "StartupWMClass") and value:
+                    names.add(value)
+                    names.add(value.split()[0])
+        break
+    return sorted(names)
 
 
 def lower_set(items):
