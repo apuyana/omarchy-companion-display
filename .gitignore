@@ -1,0 +1,7 @@
+# Local, per-user configuration and secrets
+config.local.json
+*.local.json
+.env
+*.key
+# Screenshots with real data
+screenshots/private/
