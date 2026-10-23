@@ -11,3 +11,7 @@ Planned modules:
 - Optional: Paperclip tasks, Claude Code session status
 
 Status: work in progress.
+
+## License
+
+[MIT](LICENSE)
