@@ -1,6 +1,6 @@
-# omarchy-side-panel
+# omarchy-companion-display
 
-A full-screen side panel for a secondary (vertical) monitor on [Omarchy](https://omarchy.org/).
+An always-on companion display for a secondary (vertical) monitor on [Omarchy](https://omarchy.org/).
 
 Planned modules:
 
