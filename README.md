@@ -44,7 +44,7 @@ QML changes need `omarchy restart shell` to show up, because the panel stays loa
 | `screen` | `HDMI-A-1` | Monitor name to draw on |
 | `locale` | `en_US` | Locale for the date |
 | `dateFormat` | `dddd, MMMM d` | Qt date format under the clock |
-| `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode |
+| `idleSeconds` | `300` | Seconds without news (or mouse movement on the panel) before idle mode. News: a new chat, mail or phone notification, or Claude Code finishing its last working session |
 | `privacy` | `false` | Hide message and mail text, show only senders and counts |
 | `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip (burn-in) |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |

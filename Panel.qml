@@ -51,9 +51,25 @@ Item {
   function applyFeed(line) {
     var next
     try { next = JSON.parse(line) } catch (e) { return }
-    var before = root.signature(root.feedState)
+    var prev = root.feedState
     root.feedState = next
-    if (root.signature(next) !== before) root.markActivity()
+    if (root.signature(next) !== root.signature(prev)
+        || root.appsTotal(next) > root.appsTotal(prev)
+        || (root.busyCount(prev) > 0 && root.busyCount(next) === 0))
+      root.markActivity()
+  }
+
+  // Wake-up rules besides new chats and mail: a new notification from any
+  // other phone app, and Claude Code going from working to all sessions done.
+  function appsTotal(s) {
+    var a = s.apps || [], n = 0
+    for (var i = 0; i < a.length; i++) n += a[i].count
+    return n
+  }
+  function busyCount(s) {
+    var c = s.claude || [], n = 0
+    for (var i = 0; i < c.length; i++) if (c[i].status === "busy") n++
+    return n
   }
 
   // Something new arrived: newest chat/mail time or counts changed.
