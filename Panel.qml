@@ -269,14 +269,15 @@ Item {
       anchors.bottomMargin: 32 - root.shiftY
       spacing: P.gap
 
-      // Clock + mail count
+      // Clock, mail count, other phone notifications
       RowLayout {
         Layout.fillWidth: true
-        visible: !root.playerExpanded && (root.moduleOn("clock") || root.moduleOn("mail"))
+        visible: !root.playerExpanded && (root.moduleOn("clock") || root.moduleOn("mail") || root.moduleOn("apps"))
         spacing: P.gap
 
         Card {
           Layout.fillWidth: true
+          Layout.preferredWidth: 1
           Layout.preferredHeight: 120
           visible: root.moduleOn("clock")
           ColumnLayout {
@@ -314,6 +315,7 @@ Item {
 
         Card {
           Layout.fillWidth: true
+          Layout.preferredWidth: 1
           Layout.preferredHeight: 120
           visible: root.moduleOn("mail")
           RowLayout {
@@ -338,6 +340,53 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: root.openMail()
+          }
+        }
+
+        // Other phone notifications, counted per app
+        Card {
+          id: appsCard
+          Layout.fillWidth: true
+          Layout.preferredWidth: 1
+          Layout.preferredHeight: 120
+          visible: root.moduleOn("apps")
+          readonly property var apps: root.feedState.apps || []
+          readonly property int total: {
+            var n = 0
+            for (var i = 0; i < apps.length; i++) n += apps[i].count
+            return n
+          }
+          RowLayout {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 28
+            anchors.rightMargin: 20
+            spacing: 22
+            Text { text: "\uF10B"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 36 }
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 4
+              Text {
+                text: appsCard.total
+                color: P.textStrong
+                font.family: root.fontFamily
+                font.pixelSize: 50
+                font.weight: Font.DemiBold
+              }
+              Text {
+                Layout.fillWidth: true
+                text: {
+                  var a = appsCard.apps
+                  if (!a.length) return "phone notifications"
+                  return a.map(function (x) { return x.count > 1 ? x.app + " " + x.count : x.app }).join(" · ")
+                }
+                color: P.textMuted
+                font.family: root.fontFamily
+                font.pixelSize: 16
+                elide: Text.ElideRight
+              }
+            }
           }
         }
       }
@@ -574,39 +623,6 @@ Item {
 
       // Pushes the bottom rows down when chats/mail are short
       Item { Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredHeight: 0; visible: !root.playerExpanded }
-
-      // Other phone apps
-      RowLayout {
-        Layout.fillWidth: true
-        visible: !root.playerExpanded && root.moduleOn("apps")
-        spacing: P.gap
-
-        Card {
-          Layout.fillWidth: true
-          Layout.preferredHeight: 64
-          visible: root.moduleOn("apps")
-          RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 24
-            anchors.rightMargin: 24
-            spacing: 14
-            Text { text: ""; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 20 }
-            Text {
-              Layout.fillWidth: true
-              color: P.textSoft
-              font.family: root.fontFamily
-              font.pixelSize: 16
-              elide: Text.ElideRight
-              text: {
-                var a = root.feedState.apps || []
-                if (!a.length) return "No other notifications"
-                return a.map(function (x) { return x.app + " " + x.count }).join(" · ")
-              }
-            }
-          }
-        }
-
-      }
 
       // Claude Code: one-line counter, expands upward to list every session
       Card {
