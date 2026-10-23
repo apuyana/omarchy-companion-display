@@ -215,6 +215,12 @@ Item {
   // album art in the expanded player. Fetched from LRCLIB only while open.
   property bool lyricsOpen: false
   property var lyrics: null
+  // Lyrics to show: the panel only takes the full space when there are some.
+  readonly property bool lyricsShown: root.lyricsOpen && !!root.lyrics && !!root.lyrics.found
+    && !root.lyricsInstrumental
+    && ((root.lyrics.synced || []).length > 0
+        || (root.lyrics.plain || []).some(function (l) { return l !== "" }))
+  readonly property bool lyricsInstrumental: !!(root.lyrics && root.lyrics.instrumental)
   readonly property string trackKey: root.player && root.player.trackTitle
     ? (root.player.trackArtist || "") + "\n" + root.player.trackTitle : ""
   property string lyricsKey: ""
@@ -921,10 +927,10 @@ Item {
               MouseArea { anchors.fill: parent; anchors.margins: -12; cursorShape: Qt.PointingHandCursor; onClicked: root.playerExpanded = false }
             }
           }
-          Item { Layout.fillHeight: true; visible: !root.lyricsOpen }
+          Item { Layout.fillHeight: true; visible: !root.lyricsShown }
           AlbumArt {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: root.lyricsOpen ? 160 : Math.min(600, parent.width)
+            Layout.preferredWidth: root.lyricsShown ? 160 : Math.min(600, parent.width)
             Layout.preferredHeight: Layout.preferredWidth
             radius: 18
             fontFamily: root.fontFamily
@@ -949,9 +955,11 @@ Item {
               font.pixelSize: 19
             }
           }
+          // Without lyrics, only a one-line status under the title.
           LyricsView {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: root.lyricsShown
+            Layout.preferredHeight: root.lyricsShown ? -1 : 28
             visible: root.lyricsOpen
             lyrics: root.lyrics
             currentLine: root.lyricsLine
@@ -982,14 +990,15 @@ Item {
         }
       }
 
-      // Lyrics panel above the compact player, about a third of the screen
+      // Lyrics panel above the compact player: about a third of the screen,
+      // or a thin strip with the status while searching or without lyrics.
       Card {
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.round(window.height / 3)
+        Layout.preferredHeight: root.lyricsShown ? Math.round(window.height / 3) : 64
         visible: !root.playerExpanded && root.moduleOn("player") && root.lyricsOpen
         LyricsView {
           anchors.fill: parent
-          anchors.margins: 24
+          anchors.margins: root.lyricsShown ? 24 : 0
           lyrics: root.lyrics
           currentLine: root.lyricsLine
           fontFamily: root.fontFamily

@@ -69,6 +69,7 @@ Item {
 
   // Fade the edges so lines scroll in and out softly.
   Rectangle {
+    visible: list.visible
     anchors { top: parent.top; left: parent.left; right: parent.right }
     height: 40 * root.size
     gradient: Gradient {
@@ -77,6 +78,7 @@ Item {
     }
   }
   Rectangle {
+    visible: list.visible
     anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
     height: 40 * root.size
     gradient: Gradient {
