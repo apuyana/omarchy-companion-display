@@ -219,6 +219,14 @@ class Feed:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.load(resp)
 
+    @staticmethod
+    def issue_url(base, identifier):
+        # Issues live at /<company prefix>/issues/<identifier>, e.g. /ANU/issues/ANU-372.
+        prefix = identifier.split("-")[0]
+        if not prefix:
+            return ""
+        return "%s/%s/issues/%s" % (base.rstrip("/"), prefix, urllib.parse.quote(identifier))
+
     def read_paperclip(self, cfg):
         base, company = cfg.get("url"), cfg.get("companyId")
         token_file = os.path.expanduser(cfg.get(
@@ -260,6 +268,7 @@ class Feed:
                 "status": status,
                 "assignee": names.get(i.get("assigneeAgentId"), "Board" if i.get("assigneeUserId") else ""),
                 "updatedAt": i.get("updatedAt", ""),
+                "url": self.issue_url(base, i.get("identifier", "")),
             })
         rows.sort(key=lambda r: r["updatedAt"], reverse=True)
         rows.sort(key=lambda r: order[r["status"]])

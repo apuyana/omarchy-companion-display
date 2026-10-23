@@ -334,30 +334,51 @@ Item {
 
           Repeater {
             model: paperclipCard.pc && paperclipCard.pc.ok ? paperclipCard.pc.issues.slice(0, root.config.paperclip && root.config.paperclip.maxIssues ? root.config.paperclip.maxIssues : 4) : []
-            RowLayout {
+            Rectangle {
+              id: issueRow
               required property var modelData
               Layout.fillWidth: true
-              spacing: 14
-              Text {
-                Layout.preferredWidth: 96
-                text: modelData.identifier
-                color: modelData.status === "blocked" ? P.amber : (modelData.status === "in_review" ? P.blue : P.textSoft)
-                font.family: root.fontFamily
-                font.pixelSize: 16
+              Layout.leftMargin: -10
+              Layout.rightMargin: -10
+              implicitHeight: issueContent.implicitHeight + 12
+              radius: 10
+              color: issueMouse.containsMouse ? P.item : "transparent"
+              MouseArea {
+                id: issueMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: !!issueRow.modelData.url
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Quickshell.execDetached(["xdg-open", issueRow.modelData.url])
               }
-              Text {
-                Layout.fillWidth: true
-                text: modelData.title
-                color: P.text
-                font.family: root.fontFamily
-                font.pixelSize: 16
-                elide: Text.ElideRight
-              }
-              Text {
-                text: modelData.assignee
-                color: P.textMuted
-                font.family: root.fontFamily
-                font.pixelSize: 15
+              RowLayout {
+                id: issueContent
+                readonly property var modelData: issueRow.modelData
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 14
+                Text {
+                  Layout.preferredWidth: 96
+                  text: modelData.identifier
+                  color: modelData.status === "blocked" ? P.amber : (modelData.status === "in_review" ? P.blue : P.textSoft)
+                  font.family: root.fontFamily
+                  font.pixelSize: 16
+                }
+                Text {
+                  Layout.fillWidth: true
+                  text: modelData.title
+                  color: P.text
+                  font.family: root.fontFamily
+                  font.pixelSize: 16
+                  elide: Text.ElideRight
+                }
+                Text {
+                  text: modelData.assignee
+                  color: P.textMuted
+                  font.family: root.fontFamily
+                  font.pixelSize: 15
+                }
               }
             }
           }
