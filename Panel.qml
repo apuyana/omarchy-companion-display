@@ -189,14 +189,69 @@ Item {
   }
   property bool playerExpanded: false
   property bool claudeExpanded: false
+
+  // Lyrics button (lines with a music note) that opens and closes the lyrics.
+  component LyricsToggle: Text {
+    text: "\u{F0CB8}"
+    color: root.lyricsOpen ? P.green : P.textMuted
+    font.family: root.fontFamily
+    font.pixelSize: 22
+    MouseArea { anchors.fill: parent; anchors.margins: -12; cursorShape: Qt.PointingHandCursor; onClicked: root.lyricsOpen = !root.lyricsOpen }
+  }
   // Start expanded when the config asks for it (re-applied on config changes).
   onConfigChanged: claudeExpanded = !!(config.claude && config.claude.expanded)
 
   Timer {
-    interval: 1000
+    // Faster ticks while synced lyrics follow the song.
+    interval: root.lyricsOpen ? 250 : 1000
     repeat: true
     running: !!root.player && root.player.isPlaying
     onTriggered: root.player.positionChanged()
+  }
+
+  // ------------------------------------------------------------ lyrics
+
+  // Lyrics open as a panel above the compact player, or in place of the
+  // album art in the expanded player. Fetched from LRCLIB only while open.
+  property bool lyricsOpen: false
+  property var lyrics: null
+  readonly property string trackKey: root.player && root.player.trackTitle
+    ? (root.player.trackArtist || "") + "\n" + root.player.trackTitle : ""
+  property string lyricsKey: ""
+  onTrackKeyChanged: fetchLyrics()
+  onLyricsOpenChanged: fetchLyrics()
+
+  function fetchLyrics() {
+    if (!root.lyricsOpen || root.lyricsKey === root.trackKey) return
+    root.lyricsKey = root.trackKey
+    if (!root.trackKey) { root.lyrics = null; return }
+    root.lyrics = { loading: true }
+    lyricsProc.running = false
+    lyricsProc.command = ["python3", root.pluginDir + "/bin/companion-lyrics",
+      root.player.trackArtist || "", root.player.trackTitle,
+      root.player.trackAlbum || "", String(Math.round(root.player.length || 0))]
+    lyricsProc.running = true
+  }
+
+  Process {
+    id: lyricsProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var r
+        try { r = JSON.parse(text) } catch (e) { return }
+        // Drop answers for a song that already ended.
+        if (r.track && r.track.join("\n") === root.lyricsKey) root.lyrics = r
+      }
+    }
+  }
+
+  // Last synced line whose time has come; a small lead feels in step.
+  readonly property int lyricsLine: {
+    var l = root.lyrics && root.lyrics.synced
+    if (!l || !l.length || !root.player) return -1
+    var pos = root.player.position + 0.3, idx = -1
+    for (var i = 0; i < l.length && l[i].t <= pos; i++) idx = i
+    return idx
   }
 
   // ------------------------------------------------- idle + burn-in care
@@ -857,6 +912,7 @@ Item {
               glyphColor: P.green
               label: root.player ? (root.player.identity || "Player") : "Player"
             }
+            LyricsToggle { }
             Text {
               text: "\u{F0294}"
               color: P.textMuted
@@ -865,10 +921,10 @@ Item {
               MouseArea { anchors.fill: parent; anchors.margins: -12; cursorShape: Qt.PointingHandCursor; onClicked: root.playerExpanded = false }
             }
           }
-          Item { Layout.fillHeight: true }
+          Item { Layout.fillHeight: true; visible: !root.lyricsOpen }
           AlbumArt {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: Math.min(600, parent.width)
+            Layout.preferredWidth: root.lyricsOpen ? 160 : Math.min(600, parent.width)
             Layout.preferredHeight: Layout.preferredWidth
             radius: 18
             fontFamily: root.fontFamily
@@ -893,6 +949,15 @@ Item {
               font.pixelSize: 19
             }
           }
+          LyricsView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.lyricsOpen
+            lyrics: root.lyrics
+            currentLine: root.lyricsLine
+            size: 1.15
+            fontFamily: root.fontFamily
+          }
           ColumnLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -914,6 +979,20 @@ Item {
             size: 1.4
             fontFamily: root.fontFamily
           }
+        }
+      }
+
+      // Lyrics panel above the compact player, about a third of the screen
+      Card {
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.round(window.height / 3)
+        visible: !root.playerExpanded && root.moduleOn("player") && root.lyricsOpen
+        LyricsView {
+          anchors.fill: parent
+          anchors.margins: 24
+          lyrics: root.lyrics
+          currentLine: root.lyricsLine
+          fontFamily: root.fontFamily
         }
       }
 
@@ -971,6 +1050,7 @@ Item {
             player: root.player
             fontFamily: root.fontFamily
           }
+          LyricsToggle { }
           Text {
             text: "\u{F0293}"
             color: P.textMuted

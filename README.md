@@ -43,6 +43,7 @@ The panel sits on the Bottom layer of that monitor, so windows you open there st
 - **Paperclip task**: opens it in the browser.
 - **Claude bar**: the icon opens Claude Desktop; the rest of the bar expands the list of every session.
 - **Player bar**: the buttons control playback, the expand button switches to a full player, and the rest of the bar opens your player app (Spotify by default).
+- **Lyrics**: the lyrics button (lines with a music note) opens a lyrics panel above the player bar (about a third of the screen), or shows them in place of the album art in the full player. Synced lyrics follow the song. They come from [LRCLIB](https://lrclib.net), a free lyrics database that needs no account, are fetched only while the panel is open, and are cached under `~/.cache/omarchy-companion-display/lyrics`.
 
 **Idle mode** starts after `idleSeconds` without news or mouse movement over the panel. It wakes up on a new chat, mail or phone notification, when Claude Code finishes its last working session, or when you move the mouse over it.
 
