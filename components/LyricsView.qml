@@ -25,6 +25,14 @@ Item {
 
   clip: true
 
+  // Glide to each new line while the song plays.
+  onCurrentLineChanged: list.currentIndex = synced ? currentLine : -1
+  function jumpToCurrent() {
+    list.currentIndex = synced ? currentLine : -1
+    if (list.currentIndex >= 0) list.positionViewAtIndex(list.currentIndex, ListView.Center)
+    else list.positionViewAtBeginning()
+  }
+
   Text {
     anchors.centerIn: parent
     visible: root.status !== ""
@@ -40,7 +48,7 @@ Item {
     visible: root.status === ""
     model: root.lines
     spacing: 14 * root.size
-    currentIndex: root.synced ? root.currentLine : -1
+    currentIndex: -1
     // Keep the current line in the middle while the song plays.
     highlightRangeMode: root.synced && root.currentLine >= 0 ? ListView.StrictlyEnforceRange : ListView.NoHighlightRange
     preferredHighlightBegin: height / 2 - 24 * root.size
@@ -49,7 +57,10 @@ Item {
     interactive: !root.synced
     header: Item { height: root.synced ? list.height / 2 - 24 * root.size : 0 }
     footer: Item { height: root.synced ? list.height / 2 : 0 }
-    onModelChanged: positionViewAtBeginning()
+    // Jump straight to the current line when lyrics load or the view is
+    // resized; ListView resets currentIndex on a new model, so set it here.
+    onModelChanged: Qt.callLater(root.jumpToCurrent)
+    onHeightChanged: Qt.callLater(root.jumpToCurrent)
 
     delegate: Text {
       required property var modelData
