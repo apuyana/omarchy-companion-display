@@ -30,12 +30,14 @@ Burn-in care is built in: a dark palette with no white areas, a slow pixel shift
 
 ```bash
 omarchy plugin add https://github.com/apuyana/omarchy-companion-display.git --enable
-cp ~/.config/omarchy/plugins/apuyana.companion-display/config.example.json ~/.config/omarchy/companion-display.json
+cp -n ~/.config/omarchy/plugins/apuyana.companion-display/config.example.json ~/.config/omarchy/companion-display.json
 ```
 
-Then set `screen` in `~/.config/omarchy/companion-display.json` to the monitor you want (`hyprctl monitors` lists them). The config reloads on save.
+Then set `screen` in `~/.config/omarchy/companion-display.json` to the monitor you want (`hyprctl monitors` lists them). The config reloads on save. If no monitor matches `screen`, nothing is drawn.
 
 The panel sits on the Bottom layer of that monitor, so windows you open there still cover it.
+
+It is designed for a secondary monitor. With a single monitor it still works, as a live background behind your windows; leave `hideBar` off there, since it would cover your only bar.
 
 ## Using it
 
