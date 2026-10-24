@@ -18,6 +18,7 @@
   ],
   "ignoreApps": [],
   "mailHistory": 30,
+  "mailKeepHours": 0,
   "modules": {
     "clock": true,
     "mail": true,

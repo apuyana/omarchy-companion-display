@@ -49,6 +49,7 @@ DEFAULTS = {
     "phoneMailApps": ["Outlook", "Gmail", "BlueMail"],
     "ignoreApps": [],
     "mailHistory": 30,
+    "mailKeepHours": 0,  # 0: keep seen desktop mails until dismissed
     "paperclip": {},
     "demo": False,
 }
@@ -216,33 +217,76 @@ class Feed:
 
     # --------------------------------------------------- desktop mail notify
 
-    def on_desktop_notify(self, app, summary, body):
+    def on_desktop_notify(self, app, summary, body, nid):
         cfg = self.config
         if app.lower() not in lower_set(cfg["mailApps"]):
-            return
+            return False
         self.desktop_mail.insert(0, {
             "app": app, "summary": summary, "body": body,
-            "ts": time.time(), "source": "desktop",
+            "ts": time.time(), "source": "desktop", "nid": nid,
         })
         del self.desktop_mail[int(cfg["mailHistory"]):]
         self.save_mail_state()
         self.emit()
+        return False
+
+    def on_notification_closed(self, nid, reason):
+        # 2: dismissed by the user, 3: closed by the app (e.g. the mail was
+        # read). Expired notifications (1) keep their mail.
+        if reason not in (2, 3):
+            return False
+        kept = [m for m in self.desktop_mail if m.get("nid") != nid]
+        if len(kept) != len(self.desktop_mail):
+            self.desktop_mail = kept
+            self.save_mail_state()
+            self.emit()
+        return False
+
+    def prune_old_mail(self):
+        hours = float(self.config.get("mailKeepHours") or 0)
+        if hours <= 0:
+            return
+        cutoff = time.time() - hours * 3600
+        kept = [m for m in self.desktop_mail if m["ts"] > self.seen_at or m["ts"] > cutoff]
+        if len(kept) != len(self.desktop_mail):
+            self.desktop_mail = kept
+            self.save_mail_state()
 
     def watch_desktop_notifications(self):
-        match = ("type='method_call',interface='org.freedesktop.Notifications',"
-                 "member='Notify'")
+        # Notify calls, their replies (which carry the notification id) and
+        # NotificationClosed. Ids are only unique per notification server, so
+        # they are stored as "<server bus name>/<id>".
+        iface = "interface='org.freedesktop.Notifications'"
+        matches = [
+            "type='method_call',%s,member='Notify'" % iface,
+            "type='method_return',sender='org.freedesktop.Notifications'",
+            "type='signal',%s,member='NotificationClosed'" % iface,
+        ]
+        cmd = ["busctl", "--user", "monitor", "--json=short"]
+        for m in matches:
+            cmd += ["--match", m]
         proc = subprocess.Popen(
-            ["busctl", "--user", "monitor", "--json=short", "--match", match],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
         )
+        pending = {}
         for line in proc.stdout:
             try:
                 msg = json.loads(line)
-                data = msg["payload"]["data"]
-                app, summary, body = str(data[0]), str(data[3]), str(data[4])
+                kind, data = msg.get("type"), msg["payload"]["data"]
+                if kind == "method_call":
+                    pending[(msg["sender"], msg["cookie"])] = (str(data[0]), str(data[3]), str(data[4]))
+                    if len(pending) > 100:
+                        pending.pop(next(iter(pending)))
+                elif kind == "method_return":
+                    call = pending.pop((msg["destination"], msg["reply_cookie"]), None)
+                    if call:
+                        nid = "%s/%d" % (msg["sender"], int(data[0]))
+                        GLib.idle_add(self.on_desktop_notify, *call, nid)
+                elif kind == "signal":
+                    nid = "%s/%d" % (msg["sender"], int(data[0]))
+                    GLib.idle_add(self.on_notification_closed, nid, int(data[1]))
             except (ValueError, KeyError, IndexError, TypeError):
                 continue
-            GLib.idle_add(self.on_desktop_notify, app, summary, body)
 
     # ------------------------------------------------------------ paperclip
 
@@ -507,6 +551,7 @@ class Feed:
         self.refresh_pending = False
         self.config = load_config()
         self.read_phone()
+        self.prune_old_mail()
         self.emit()
         return False
 

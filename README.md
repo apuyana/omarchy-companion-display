@@ -48,6 +48,7 @@ It is designed for a secondary monitor. With a single monitor it still works, as
 - **Mail counter or mail section**: opens your default mail client and marks every mail as seen.
 - **Chats section**: opens your chat app (WhatsApp web by default).
 - **A chat or a mail**: hover it and press ✕ to dismiss it. Phone notifications are dismissed on the phone too.
+- **Desktop mail notifications**: dismissing one while it is still on screen (or the mail app closing it) also removes the mail from the panel. Ones that time out stay; see `mailKeepHours`.
 - **Paperclip task**: opens it in the browser.
 - **Claude bar**: the icon opens Claude Desktop; the rest of the bar expands the list of every session.
 - **Player bar**: the buttons control playback, the expand button switches to a full player, and the rest of the bar opens your player app (Spotify by default).
@@ -73,6 +74,7 @@ It is designed for a secondary monitor. With a single monitor it still works, as
 | `phoneMailApps` | Outlook, Gmail, BlueMail | Phone apps whose notifications count as mail |
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
+| `mailKeepHours` | `0` | Remove desktop mails older than this many hours once they are seen (after you click the mail section); `0` keeps them until you dismiss them |
 | `launch` | see below | Command run when clicking `mail`, `chats`, `claude` or `player`; `[]` disables the click |
 | `paperclip` | `{}` | Paperclip instance, see below |
 | `claude.expanded` | `false` | Start with the Claude session list open |
