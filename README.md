@@ -128,6 +128,19 @@ Android hides the content of some notifications from KDE Connect. On the phone, 
 
 `bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, watches Claude Code's session files in `~/.claude/sessions`, polls Paperclip, and prints the combined state as JSON lines. `Panel.qml` runs it and draws the panel; it reads MPRIS and Omarchy's Claude usage record (`~/.local/state/omarchy/agents/usage/claude.json`) directly. Mail state lives in `~/.local/state/omarchy-companion-display/`.
 
+## Uninstall
+
+```bash
+omarchy plugin remove apuyana.companion-display
+```
+
+This removes the plugin but keeps your settings and data. To delete them too:
+
+```bash
+rm -f ~/.config/omarchy/companion-display.json ~/.config/omarchy/companion-display-paperclip.token
+rm -rf ~/.local/state/omarchy-companion-display ~/.cache/omarchy-companion-display
+```
+
 ## Development
 
 Link your checkout instead of installing:
