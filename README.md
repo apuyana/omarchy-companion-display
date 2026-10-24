@@ -4,7 +4,10 @@ An always-on companion display for a secondary monitor on [Omarchy](https://omar
 
 It turns a spare screen into a quiet, glanceable dashboard. Every section is optional, and the ones that need something you don't have hide themselves.
 
-<p align="center"><img src="screenshots/demo.png" alt="The companion display in demo mode" width="480"></p>
+<p align="center">
+  <img src="screenshots/demo.png" alt="The companion display in demo mode" width="400">
+  <img src="screenshots/demo-lyrics.png" alt="The full player with synced lyrics" width="400">
+</p>
 
 | Section | Needs | Shows |
 |---|---|---|
@@ -14,7 +17,8 @@ It turns a spare screen into a quiet, glanceable dashboard. Every section is opt
 | Chats | KDE Connect | WhatsApp, Telegram, Signal… grouped by chat with the latest message |
 | Paperclip | A [Paperclip](https://github.com/paperclipai/paperclip) instance and a board API key | Task counts, agent availability, latest blocked and in-review tasks |
 | Claude Code | [Claude Code](https://claude.com/claude-code) | Sessions working, done, waiting or idle, plus usage limits |
-| Player | Any MPRIS player (Spotify, browsers, your phone through KDE Connect) | Now playing with controls |
+| Player | Any MPRIS player (Spotify, browsers, your phone through KDE Connect) | Now playing with controls, and a full-screen player |
+| Lyrics | Internet access ([LRCLIB](https://lrclib.net), no account) | Synced lyrics that follow the song, in a panel or in the full player |
 
 Burn-in care is built in: a dark palette with no white areas, a slow pixel shift, an idle mode (pure black with a small dim block that moves around), and an option to cover the Omarchy bar on that monitor.
 

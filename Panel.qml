@@ -197,6 +197,26 @@ Item {
     function togglePlaying() { isPlaying = !isPlaying }
   }
   readonly property bool demo: config.demo === true
+  // Made-up synced lyrics for the demo track, so screenshots show the panel.
+  readonly property var demoLyrics: ({
+    track: [demoPlayer.trackArtist, demoPlayer.trackTitle], found: true, instrumental: false, plain: [],
+    synced: [
+      { t: 62, text: "We drove until the towns ran out" },
+      { t: 68, text: "And the radio forgot our names" },
+      { t: 74, text: "You traced the frost along the glass" },
+      { t: 80, text: "Like a map of where we'd never been" },
+      { t: 86, text: "" },
+      { t: 90, text: "Oh, the northern lights are calling" },
+      { t: 96, text: "Green and slow across the sky" },
+      { t: 102, text: "Every road we left behind us" },
+      { t: 108, text: "Folds into the quiet tonight" },
+      { t: 114, text: "" },
+      { t: 118, text: "Keep the engine warm a little longer" },
+      { t: 124, text: "Let the morning wait outside" },
+      { t: 130, text: "We don't need to know where this is going" },
+      { t: 136, text: "Just that you are by my side" }
+    ]
+  })
 
   readonly property var player: {
     if (root.demo) return demoPlayer
@@ -252,6 +272,7 @@ Item {
     if (!root.lyricsOpen || root.lyricsKey === root.trackKey) return
     root.lyricsKey = root.trackKey
     if (!root.trackKey) { root.lyrics = null; return }
+    if (root.demo) { root.lyrics = root.demoLyrics; return }
     root.lyrics = { loading: true }
     lyricsProc.running = false
     lyricsProc.command = ["python3", root.pluginDir + "/bin/companion-lyrics",

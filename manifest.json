@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "apuyana.companion-display",
   "name": "Companion Display",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Alberto Puyana",
   "license": "MIT",
-  "description": "Always-on dashboard for a secondary monitor: phone chats and mail via KDE Connect and desktop notifications, media player, Claude usage, and a burn-in safe idle mode.",
+  "description": "Always-on dashboard for a secondary monitor: phone chats and mail via KDE Connect and desktop notifications, media player with synced lyrics, Claude usage, and a burn-in safe idle mode.",
   "kinds": [
     "panel"
   ],
