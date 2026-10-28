@@ -34,6 +34,7 @@ Item {
   }
 
   Text {
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     visible: root.status !== ""
     text: root.status
@@ -63,6 +64,7 @@ Item {
     onHeightChanged: Qt.callLater(root.jumpToCurrent)
 
     delegate: Text {
+      textFormat: Text.PlainText
       required property var modelData
       required property int index
       readonly property bool current: root.synced && index === root.currentLine

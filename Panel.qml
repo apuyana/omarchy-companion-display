@@ -63,6 +63,11 @@ Item {
 
   // Wake-up rules besides new chats and mail: a new notification from any
   // other phone app, and Claude Code going from working to all sessions done.
+  function allKeys(list) {
+    var keys = []
+    for (var i = 0; i < (list || []).length; i++) keys = keys.concat(list[i].keys || [])
+    return keys
+  }
   function appsTotal(s) {
     var a = s.apps || [], n = 0
     for (var i = 0; i < a.length; i++) n += a[i].count
@@ -154,28 +159,6 @@ Item {
     return l ? Math.round(l.percent * 100) : -1
   }
 
-  // Take tasks in turns from each status (blocked, in review, in progress) so
-  // a long list of one kind does not hide the others.
-  function pickIssues(issues, max) {
-    var groups = {}, order = []
-    for (var i = 0; i < issues.length; i++) {
-      var st = issues[i].status
-      if (!groups[st]) { groups[st] = []; order.push(st) }
-      groups[st].push(issues[i])
-    }
-    var picked = []
-    for (var round = 0; picked.length < max; round++) {
-      var added = false
-      for (var j = 0; j < order.length && picked.length < max; j++) {
-        if (round < groups[order[j]].length) { picked.push(groups[order[j]][round]); added = true }
-      }
-      if (!added) break
-    }
-    var rank = {}
-    for (var k = 0; k < order.length; k++) rank[order[k]] = k
-    return picked.sort(function (a, b) { return rank[a.status] - rank[b.status] })
-  }
-
   // ------------------------------------------------------------- media
 
   // Made-up track for demo mode: no album art, controls do nothing.
@@ -233,6 +216,8 @@ Item {
 
   // Lyrics button (lines with a music note) that opens and closes the lyrics.
   component LyricsToggle: Text {
+    textFormat: Text.PlainText
+    visible: root.lyricsAllowed
     text: "\u{F0CB8}"
     color: root.lyricsOpen ? P.green : P.textMuted
     font.family: root.fontFamily
@@ -244,7 +229,7 @@ Item {
 
   Timer {
     // Faster ticks while synced lyrics follow the song.
-    interval: root.lyricsOpen ? 250 : 1000
+    interval: root.lyricsOn ? 250 : 1000
     repeat: true
     running: !!root.player && root.player.isPlaying
     onTriggered: root.player.positionChanged()
@@ -255,9 +240,27 @@ Item {
   // Lyrics open as a panel above the compact player, or in place of the
   // album art in the expanded player. Fetched from LRCLIB only while open.
   property bool lyricsOpen: false
+  // Common music players; browsers and video players are left out on purpose.
+  readonly property var musicPlayers: ["Spotify", "ncspot", "Tidal-hifi", "Cider", "Feishin", "Supersonic", "Strawberry", "Clementine", "Rhythmbox", "Lollypop", "Amberol", "Elisa", "Audacious", "Quod Libet", "DeaDBeeF"]
+  // Only players listed in lyricsPlayers (by name or desktop entry) look up
+  // lyrics, so browser tabs do not send page titles to LRCLIB. An empty list
+  // allows every player.
+  readonly property var lyricsPlayers: Array.isArray(config.lyricsPlayers) ? config.lyricsPlayers : root.musicPlayers
+  readonly property bool lyricsAllowed: {
+    if (root.demo || !root.lyricsPlayers.length) return true
+    if (!root.player) return false
+    var names = [String(root.player.identity || ""), String(root.player.desktopEntry || "")]
+    for (var i = 0; i < root.lyricsPlayers.length; i++) {
+      var want = String(root.lyricsPlayers[i]).toLowerCase()
+      if (names[0].toLowerCase() === want || names[1].toLowerCase() === want) return true
+    }
+    return false
+  }
+  // Lyrics are showing: opened, and the current player may look them up.
+  readonly property bool lyricsOn: root.lyricsOpen && root.lyricsAllowed
   property var lyrics: null
   // Lyrics to show: the panel only takes the full space when there are some.
-  readonly property bool lyricsShown: root.lyricsOpen && !!root.lyrics && !!root.lyrics.found
+  readonly property bool lyricsShown: root.lyricsOn && !!root.lyrics && !!root.lyrics.found
     && !root.lyricsInstrumental
     && ((root.lyrics.synced || []).length > 0
         || (root.lyrics.plain || []).some(function (l) { return l !== "" }))
@@ -266,23 +269,26 @@ Item {
     ? (root.player.trackArtist || "") + "\n" + root.player.trackTitle : ""
   property string lyricsKey: ""
   onTrackKeyChanged: fetchLyrics()
-  onLyricsOpenChanged: fetchLyrics()
+  onLyricsOnChanged: fetchLyrics()
 
   function fetchLyrics() {
-    if (!root.lyricsOpen || root.lyricsKey === root.trackKey) return
+    if (!root.lyricsOn || root.lyricsKey === root.trackKey) return
     root.lyricsKey = root.trackKey
     if (!root.trackKey) { root.lyrics = null; return }
     if (root.demo) { root.lyrics = root.demoLyrics; return }
     root.lyrics = { loading: true }
     lyricsProc.running = false
-    lyricsProc.command = ["python3", root.pluginDir + "/bin/companion-lyrics",
-      root.player.trackArtist || "", root.player.trackTitle,
-      root.player.trackAlbum || "", String(Math.round(root.player.length || 0))]
+    // Passed in the environment, which other local users cannot read, rather
+    // than in argv, which shows up in the process list.
+    lyricsProc.environment = { COMPANION_LYRICS_TRACK: JSON.stringify({
+      artist: root.player.trackArtist || "", title: root.player.trackTitle || "",
+      album: root.player.trackAlbum || "", duration: Math.round(root.player.length || 0) }) }
     lyricsProc.running = true
   }
 
   Process {
     id: lyricsProc
+    command: ["python3", root.pluginDir + "/bin/companion-lyrics"]
     stdout: StdioCollector {
       onStreamFinished: {
         var r
@@ -296,7 +302,7 @@ Item {
   // The lyrics service was unreachable: try the same song again in a minute.
   Timer {
     interval: 60 * 1000
-    running: root.lyricsOpen && !!root.lyrics && root.lyrics.error === true
+    running: root.lyricsOn && !!root.lyrics && root.lyrics.error === true
     onTriggered: { root.lyricsKey = ""; root.fetchLyrics() }
   }
 
@@ -429,6 +435,7 @@ Item {
             anchors.leftMargin: 28
             spacing: 6
             Text {
+              textFormat: Text.PlainText
               id: clock
               color: "#d4d4d8"
               font.family: root.fontFamily
@@ -437,6 +444,7 @@ Item {
               text: Qt.formatTime(clockTick.now, "HH:mm")
             }
             Text {
+              textFormat: Text.PlainText
               color: P.textMuted
               font.family: root.fontFamily
               font.pixelSize: 16
@@ -466,17 +474,18 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: 28
             spacing: 22
-            Text { text: ""; color: P.blue; font.family: root.fontFamily; font.pixelSize: 36 }
+            Text { textFormat: Text.PlainText; text: ""; color: P.blue; font.family: root.fontFamily; font.pixelSize: 36 }
             ColumnLayout {
               spacing: 4
               Text {
+                textFormat: Text.PlainText
                 text: root.feedState.mailNew || 0
                 color: P.textStrong
                 font.family: root.fontFamily
                 font.pixelSize: 50
                 font.weight: Font.DemiBold
               }
-              Text { text: "new emails"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 16 }
+              Text { textFormat: Text.PlainText; text: "new emails"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 16 }
             }
           }
           MouseArea {
@@ -506,11 +515,12 @@ Item {
             anchors.leftMargin: 28
             anchors.rightMargin: 20
             spacing: 22
-            Text { text: "\uF10B"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 36 }
+            Text { textFormat: Text.PlainText; text: "\uF10B"; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 36 }
             ColumnLayout {
               Layout.fillWidth: true
               spacing: 4
               Text {
+                textFormat: Text.PlainText
                 text: appsCard.total
                 color: P.textStrong
                 font.family: root.fontFamily
@@ -518,6 +528,7 @@ Item {
                 font.weight: Font.DemiBold
               }
               Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: {
                   var a = appsCard.apps
@@ -528,136 +539,6 @@ Item {
                 font.family: root.fontFamily
                 font.pixelSize: 16
                 elide: Text.ElideRight
-              }
-            }
-          }
-        }
-      }
-
-      // Paperclip tasks
-      Card {
-        id: paperclipCard
-        readonly property var pc: root.feedState.paperclip
-        Layout.fillWidth: true
-        Layout.preferredHeight: paperclipBody.implicitHeight + 44
-        visible: !root.playerExpanded && root.moduleOn("paperclip") && pc !== null && pc !== undefined
-        ColumnLayout {
-          id: paperclipBody
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          anchors.margins: P.pad
-          anchors.topMargin: 22
-          spacing: 16
-
-          SectionHeader {
-            Layout.fillWidth: true
-            fontFamily: root.fontFamily
-            glyph: ""
-            glyphColor: P.amber
-            label: "Paperclip" + (root.demo ? " · Acme" : (root.config.paperclip && root.config.paperclip.name ? " · " + root.config.paperclip.name : ""))
-            detail: {
-              var pc = paperclipCard.pc
-              if (!pc || !pc.ok) return ""
-              var parts = []
-              if (pc.agentsBusy) parts.push(pc.agentsBusy + " working")
-              parts.push(pc.agentsIdle + " idle")
-              if (pc.agentsPaused) parts.push(pc.agentsPaused + " paused")
-              if (pc.agentsError) parts.push(pc.agentsError + " failing")
-              return parts.join(" · ")
-            }
-          }
-
-          Text {
-            visible: !!paperclipCard.pc && !paperclipCard.pc.ok
-            text: paperclipCard.pc ? (paperclipCard.pc.error || "") : ""
-            color: P.textSoft
-            font.family: root.fontFamily
-            font.pixelSize: 16
-          }
-
-          GridLayout {
-            Layout.fillWidth: true
-            visible: !!paperclipCard.pc && paperclipCard.pc.ok
-            columns: 4
-            columnSpacing: 12
-            Repeater {
-              model: {
-                var pc = paperclipCard.pc || {}
-                return [
-                  { value: pc.blocked || 0, label: "blocked", color: P.amber },
-                  { value: pc.inReview || 0, label: "in review", color: P.blue },
-                  { value: pc.inProgress || 0, label: "in progress", color: P.text },
-                  { value: pc.approvals || 0, label: "approvals", color: (pc.approvals || 0) > 0 ? P.amber : P.text }
-                ]
-              }
-              Rectangle {
-                required property var modelData
-                Layout.fillWidth: true
-                Layout.preferredWidth: 1
-                implicitHeight: 72
-                radius: 12
-                color: P.item
-                ColumnLayout {
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.left: parent.left
-                  anchors.leftMargin: 16
-                  spacing: 0
-                  Text { text: modelData.value; color: modelData.color; font.family: root.fontFamily; font.pixelSize: 30; font.weight: Font.DemiBold }
-                  Text { text: modelData.label; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
-                }
-              }
-            }
-          }
-
-          Repeater {
-            model: paperclipCard.pc && paperclipCard.pc.ok ? root.pickIssues(paperclipCard.pc.issues, root.config.paperclip && root.config.paperclip.maxIssues ? root.config.paperclip.maxIssues : 4) : []
-            Rectangle {
-              id: issueRow
-              required property var modelData
-              Layout.fillWidth: true
-              Layout.leftMargin: -10
-              Layout.rightMargin: -10
-              implicitHeight: issueContent.implicitHeight + 12
-              radius: 10
-              color: issueMouse.containsMouse ? P.item : "transparent"
-              MouseArea {
-                id: issueMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: !!issueRow.modelData.url
-                cursorShape: Qt.PointingHandCursor
-                onClicked: Quickshell.execDetached(["xdg-open", issueRow.modelData.url])
-              }
-              RowLayout {
-                id: issueContent
-                readonly property var modelData: issueRow.modelData
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 14
-                Text {
-                  Layout.preferredWidth: 96
-                  text: modelData.identifier
-                  color: modelData.status === "blocked" ? P.amber : (modelData.status === "in_review" ? P.blue : P.textSoft)
-                  font.family: root.fontFamily
-                  font.pixelSize: 16
-                }
-                Text {
-                  Layout.fillWidth: true
-                  // Privacy keeps the task id and assignee, not the title.
-                  text: root.privacy ? modelData.status.replace("_", " ") : modelData.title
-                  color: root.privacy ? P.textMuted : P.text
-                  font.family: root.fontFamily
-                  font.pixelSize: 16
-                  elide: Text.ElideRight
-                }
-                Text {
-                  text: modelData.assignee
-                  color: P.textMuted
-                  font.family: root.fontFamily
-                  font.pixelSize: 15
-                }
               }
             }
           }
@@ -679,6 +560,7 @@ Item {
           cursorShape: Qt.PointingHandCursor
           onClicked: root.openWhatsApp()
         }
+        HoverHandler { id: chatsHover }
         ColumnLayout {
           id: chatsCol
           anchors.fill: parent
@@ -696,6 +578,9 @@ Item {
               for (var i = 0; i < c.length; i++) n += c[i].count
               return c.length ? c.length + (c.length === 1 ? " chat · " : " chats · ") + n + (n === 1 ? " message" : " messages") : "no messages"
             }
+            clearable: root.allKeys(root.feedState.chats).length > 0
+            showClear: chatsHover.hovered
+            onCleared: feed.send("dismiss " + root.allKeys(root.feedState.chats).join(" "))
           }
           Repeater {
             model: root.feedState.chats || []
@@ -729,6 +614,7 @@ Item {
           cursorShape: Qt.PointingHandCursor
           onClicked: root.openMail()
         }
+        HoverHandler { id: mailHover }
         ColumnLayout {
           id: mailCol
           anchors.fill: parent
@@ -742,6 +628,9 @@ Item {
             glyphColor: P.blue
             label: "Mail"
             detail: (root.feedState.mail || []).length ? (root.feedState.mailNew || 0) + " new" : "no mail"
+            clearable: root.allKeys(root.feedState.mail).length > 0
+            showClear: mailHover.hovered
+            onCleared: feed.send("dismiss " + root.allKeys(root.feedState.mail).join(" "))
           }
           Repeater {
             model: root.feedState.mail || []
@@ -753,9 +642,11 @@ Item {
               avatarColor: P.mailAvatar
               avatarTextColor: P.mailAvatarText
               unread: modelData.new
-              title: modelData.summary
+              // The notification summary can carry the subject in some
+              // clients, so privacy shows only the app.
+              title: root.privacy ? modelData.app : modelData.summary
               meta: P.timeLabel(modelData.ts) + (modelData.source === "phone" ? " · " + modelData.app : "")
-              subject: parts.subject
+              subject: root.privacy ? "" : parts.subject
               preview: root.privacy ? "" : parts.preview
               dismissable: (modelData.keys || []).length > 0
               onDismissed: feed.send("dismiss " + modelData.keys.join(" "))
@@ -798,7 +689,7 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
             spacing: 14
-            Text { text: "\u{F06A9}"; color: P.amber; font.family: root.fontFamily; font.pixelSize: 20 }
+            Text { textFormat: Text.PlainText; text: "\u{F06A9}"; color: P.amber; font.family: root.fontFamily; font.pixelSize: 20 }
             Repeater {
               model: [
                 { key: "working", color: P.green },
@@ -813,6 +704,7 @@ Item {
                 spacing: 8
                 Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: modelData.color }
                 Text {
+                  textFormat: Text.PlainText
                   text: parent.n + " " + modelData.key
                   color: modelData.key === "idle" ? P.textMuted : P.text
                   font.family: root.fontFamily
@@ -822,6 +714,7 @@ Item {
             }
             Item { Layout.fillWidth: true }
             Text {
+              textFormat: Text.PlainText
               color: P.textMuted
               font.family: root.fontFamily
               font.pixelSize: 15
@@ -834,6 +727,7 @@ Item {
               }
             }
             Text {
+              textFormat: Text.PlainText
               text: root.claudeExpanded ? "\u{F0140}" : "\u{F0143}"
               color: P.textMuted
               font.family: root.fontFamily
@@ -855,15 +749,18 @@ Item {
                 color: parent.state.color
               }
               Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
-                text: modelData.name
+                text: root.privacy ? modelData.project : modelData.name
                 color: parent.state.label === "idle" ? P.textSoft : P.text
                 font.family: root.fontFamily
                 font.pixelSize: 16
                 elide: Text.ElideRight
               }
               Text {
+                textFormat: Text.PlainText
                 Layout.maximumWidth: 220
+                visible: !root.privacy
                 text: modelData.project
                 color: P.textMuted
                 font.family: root.fontFamily
@@ -871,6 +768,7 @@ Item {
                 elide: Text.ElideRight
               }
               Text {
+                textFormat: Text.PlainText
                 Layout.preferredWidth: 110
                 horizontalAlignment: Text.AlignRight
                 text: parent.state.label + " · " + root.ago(parent.state.age)
@@ -882,6 +780,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.claudeExpanded && claudeCard.sessions.length === 0
             text: "No open sessions"
             color: P.textSoft
@@ -944,8 +843,8 @@ Item {
               anchors.left: parent.left
               anchors.leftMargin: 20
               spacing: 2
-              Text { text: modelData.value; color: modelData.color; font.family: root.fontFamily; font.pixelSize: 30 }
-              Text { text: modelData.label; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+              Text { textFormat: Text.PlainText; text: modelData.value; color: modelData.color; font.family: root.fontFamily; font.pixelSize: 30 }
+              Text { textFormat: Text.PlainText; text: modelData.label; color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
             }
           }
         }
@@ -970,6 +869,7 @@ Item {
             }
             LyricsToggle { }
             Text {
+              textFormat: Text.PlainText
               text: "\u{F0294}"
               color: P.textMuted
               font.family: root.fontFamily
@@ -990,6 +890,7 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             spacing: 8
             Text {
+              textFormat: Text.PlainText
               Layout.alignment: Qt.AlignHCenter
               text: root.player ? (root.player.trackTitle || "") : "Nothing playing"
               color: P.textStrong
@@ -998,6 +899,7 @@ Item {
               font.weight: Font.DemiBold
             }
             Text {
+              textFormat: Text.PlainText
               Layout.alignment: Qt.AlignHCenter
               text: root.player ? [root.player.trackArtist, root.player.trackAlbum].filter(function (x) { return !!x }).join(" · ") : ""
               color: P.textMuted
@@ -1010,7 +912,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: root.lyricsShown
             Layout.preferredHeight: root.lyricsShown ? -1 : 28
-            visible: root.lyricsOpen
+            visible: root.lyricsOn
             lyrics: root.lyrics
             currentLine: root.lyricsLine
             size: 1.15
@@ -1026,9 +928,9 @@ Item {
             }
             RowLayout {
               Layout.fillWidth: true
-              Text { text: P.duration(root.player ? root.player.position : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+              Text { textFormat: Text.PlainText; text: P.duration(root.player ? root.player.position : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
               Item { Layout.fillWidth: true }
-              Text { text: P.duration(root.player ? root.player.length : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
+              Text { textFormat: Text.PlainText; text: P.duration(root.player ? root.player.length : 0); color: P.textMuted; font.family: root.fontFamily; font.pixelSize: 14 }
             }
           }
           PlayerControls {
@@ -1045,7 +947,7 @@ Item {
       Card {
         Layout.fillWidth: true
         Layout.preferredHeight: root.lyricsShown ? Math.round(window.height / 3) : 64
-        visible: !root.playerExpanded && root.moduleOn("player") && root.lyricsOpen
+        visible: !root.playerExpanded && root.moduleOn("player") && root.lyricsOn
         LyricsView {
           anchors.fill: parent
           anchors.margins: root.lyricsShown ? 24 : 0
@@ -1083,6 +985,7 @@ Item {
               Layout.fillWidth: true
               spacing: 10
               Text {
+                textFormat: Text.PlainText
                 text: root.player ? (root.player.trackTitle || "") : "Nothing playing"
                 color: P.textStrong
                 font.family: root.fontFamily
@@ -1092,6 +995,7 @@ Item {
                 Layout.maximumWidth: 380
               }
               Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: root.player ? (root.player.trackArtist || "") : ""
                 color: P.textMuted
@@ -1111,6 +1015,7 @@ Item {
           }
           LyricsToggle { }
           Text {
+            textFormat: Text.PlainText
             text: "\u{F0293}"
             color: P.textMuted
             font.family: root.fontFamily
@@ -1134,6 +1039,7 @@ Item {
         y: (idleView.height - height) / 2
 
         Text {
+          textFormat: Text.PlainText
           anchors.horizontalCenter: parent.horizontalCenter
           text: Qt.formatTime(clockTick.now, "HH:mm")
           color: P.idleText
@@ -1141,6 +1047,7 @@ Item {
           font.pixelSize: 72
         }
         Text {
+          textFormat: Text.PlainText
           anchors.horizontalCenter: parent.horizontalCenter
           color: P.idleTextSoft
           font.family: root.fontFamily

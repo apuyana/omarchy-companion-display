@@ -13,6 +13,13 @@ if [[ -z "$desktop" ]]; then
   exit 1
 fi
 
+# omarchy-launch-or-focus evals its command, so only accept a plain desktop
+# file id from mimeapps.list.
+if [[ ! "$desktop" =~ ^[A-Za-z0-9._-]+\.desktop$ ]]; then
+  notify-send -a "Companion Display" "Unexpected default app for $mime" 2>/dev/null || true
+  exit 1
+fi
+
 # Find the desktop file to read the window class the app uses.
 file=""
 IFS=: read -ra dirs <<<"${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
@@ -28,6 +35,6 @@ class=""
 class="${class:-${desktop%.desktop}}"
 
 if command -v omarchy-launch-or-focus >/dev/null; then
-  exec omarchy-launch-or-focus "$class" "uwsm-app -- $desktop"
+  exec omarchy-launch-or-focus "$class" "uwsm-app -- $(printf %q "$desktop")"
 fi
 exec setsid gtk-launch "$desktop"

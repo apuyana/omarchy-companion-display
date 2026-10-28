@@ -2,9 +2,8 @@
 """Data feed for the Omarchy companion display.
 
 Collects phone notifications from KDE Connect, mail notifications posted on
-the desktop, Claude Code session status and, optionally, task status from a
-Paperclip instance, and prints the combined state as one JSON object per line on
-stdout every time it changes. Reads simple commands from stdin:
+the desktop and Claude Code session status, and prints the combined state as
+one JSON object per line on stdout every time it changes. Reads simple commands from stdin:
 
     seen              mark every mail as seen (resets the "new" count)
     refresh           re-read everything now
@@ -21,9 +20,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 import gi
 
@@ -50,7 +46,6 @@ DEFAULTS = {
     "ignoreApps": [],
     "mailHistory": 30,
     "mailKeepHours": 0,  # 0: keep seen desktop mails until dismissed
-    "paperclip": {},
     "demo": False,
 }
 
@@ -113,7 +108,6 @@ class Feed:
         self.phone_items = []
         self.desktop_mail = []
         self.seen_at = 0
-        self.paperclip = None
         self.claude_sessions = []
         self.last_output = None
         self.refresh_pending = False
@@ -122,6 +116,12 @@ class Feed:
     # ----------------------------------------------------------- persistence
 
     def load_mail_state(self):
+        try:
+            # Older versions left these readable by other local accounts.
+            os.chmod(STATE_DIR, 0o700)
+            os.chmod(MAIL_STATE, 0o600)
+        except OSError:
+            pass
         try:
             with open(MAIL_STATE) as f:
                 data = json.load(f)
@@ -132,9 +132,16 @@ class Feed:
             pass
 
     def save_mail_state(self):
-        os.makedirs(STATE_DIR, exist_ok=True)
+        if self.config["demo"]:
+            return
+        # Mail senders and subjects are private: keep them out of reach of
+        # other local accounts whatever the umask (and fix older 755 dirs).
+        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+        os.chmod(STATE_DIR, 0o700)
         tmp = MAIL_STATE + ".tmp"
-        with open(tmp, "w") as f:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
             json.dump({"seenAt": self.seen_at, "mail": self.desktop_mail,
                        "phoneFirstSeen": self.first_seen}, f)
         os.replace(tmp, MAIL_STATE)
@@ -288,103 +295,6 @@ class Feed:
             except (ValueError, KeyError, IndexError, TypeError):
                 continue
 
-    # ------------------------------------------------------------ paperclip
-
-    def paperclip_get(self, base, token, path, params=None):
-        url = base.rstrip("/") + "/api" + path
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={
-            "Authorization": "Bearer " + token, "Accept": "application/json",
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.load(resp)
-
-    @staticmethod
-    def issue_url(base, identifier):
-        # Issues live at /<company prefix>/issues/<identifier>, e.g. /ANU/issues/ANU-372.
-        prefix = identifier.split("-")[0]
-        if not prefix:
-            return ""
-        return "%s/%s/issues/%s" % (base.rstrip("/"), prefix, urllib.parse.quote(identifier))
-
-    def read_paperclip(self, cfg):
-        base, company = cfg.get("url"), cfg.get("companyId")
-        token_file = os.path.expanduser(cfg.get(
-            "tokenFile", "~/.config/omarchy/companion-display-paperclip.token"))
-        try:
-            with open(token_file) as f:
-                token = f.read().strip()
-        except OSError:
-            return {"ok": False, "error": "Missing API key (" + token_file + ")"}
-        if not token:
-            return {"ok": False, "error": "The API key file is empty"}
-        try:
-            dash = self.paperclip_get(base, token, "/companies/%s/dashboard" % company)
-            issues = self.paperclip_get(base, token, "/companies/%s/issues" % company,
-                                        {"status": "blocked,in_review,in_progress"})
-            agents = self.paperclip_get(base, token, "/companies/%s/agents" % company)
-        except urllib.error.HTTPError as e:
-            msg = {401: "Invalid or expired API key", 403: "No access to this company"}
-            return {"ok": False, "error": msg.get(e.code, "HTTP %d" % e.code)}
-        except (urllib.error.URLError, OSError, ValueError) as e:
-            return {"ok": False, "error": "Cannot reach Paperclip: " + str(getattr(e, "reason", e))}
-
-        if isinstance(issues, dict):
-            issues = issues.get("issues") or issues.get("items") or []
-        if isinstance(agents, dict):
-            agents = agents.get("agents") or agents.get("items") or []
-        names = {a.get("id"): a.get("name", "") for a in agents}
-        order = {"blocked": 0, "in_review": 1, "in_progress": 2}
-        counts = {"blocked": 0, "in_review": 0, "in_progress": 0}
-        rows = []
-        for i in issues:
-            status = i.get("status")
-            if status not in counts:
-                continue
-            counts[status] += 1
-            rows.append({
-                "identifier": i.get("identifier", ""),
-                "title": i.get("title", ""),
-                "status": status,
-                "assignee": names.get(i.get("assigneeAgentId"), "Board" if i.get("assigneeUserId") else ""),
-                "updatedAt": i.get("updatedAt", ""),
-                "url": self.issue_url(base, i.get("identifier", "")),
-            })
-        rows.sort(key=lambda r: r["updatedAt"], reverse=True)
-        rows.sort(key=lambda r: order[r["status"]])
-        statuses = [a.get("status") for a in agents]
-        approvals = dash.get("pendingApprovals", 0)
-        if isinstance(approvals, list):
-            approvals = len(approvals)
-        return {
-            "ok": True,
-            "blocked": counts["blocked"],
-            "inReview": counts["in_review"],
-            "inProgress": counts["in_progress"],
-            "approvals": approvals,
-            "agentsBusy": sum(1 for s in statuses if s in ("running", "active")),
-            "agentsIdle": sum(1 for s in statuses if s == "idle"),
-            "agentsPaused": sum(1 for s in statuses if s == "paused"),
-            "agentsError": sum(1 for s in statuses if s == "error"),
-            "issues": rows,
-            "updated": time.time(),
-        }
-
-    def set_paperclip(self, data):
-        self.paperclip = data
-        self.emit()
-        return False
-
-    def poll_paperclip(self):
-        while True:
-            cfg = self.config.get("paperclip") or {}
-            if cfg.get("url") and cfg.get("companyId"):
-                GLib.idle_add(self.set_paperclip, self.read_paperclip(cfg))
-            elif self.paperclip is not None:
-                GLib.idle_add(self.set_paperclip, None)
-            time.sleep(max(30, int(cfg.get("interval", 60))))
-
     # --------------------------------------------------------------- claude
 
     @staticmethod
@@ -451,10 +361,6 @@ class Feed:
             return {"app": app, "summary": sender, "body": subject + "\n" + preview,
                     "ts": now - minutes * 60, "source": "phone", "keys": [], "new": new}
 
-        def issue(ident, title, status, assignee):
-            return {"identifier": ident, "title": title, "status": status,
-                    "assignee": assignee, "updatedAt": "", "url": ""}
-
         return {
             "phone": {"name": "Phone", "reachable": True},
             "chats": [
@@ -469,17 +375,6 @@ class Feed:
             ],
             "mailNew": 2,
             "apps": [{"app": "Calendar", "count": 2}, {"app": "Bank", "count": 1}],
-            "paperclip": {
-                "ok": True, "blocked": 1, "inReview": 2, "inProgress": 3, "approvals": 1,
-                "agentsBusy": 2, "agentsIdle": 4, "agentsPaused": 0, "agentsError": 0,
-                "issues": [
-                    issue("ACME-41", "Rotate the staging database credentials", "blocked", "Ops"),
-                    issue("ACME-38", "Add dark mode to the settings page", "in_review", "Frontend"),
-                    issue("ACME-44", "Write the onboarding guide", "in_progress", "Docs"),
-                    issue("ACME-36", "Cache avatar thumbnails", "in_review", "Backend"),
-                ],
-                "updated": now,
-            },
             "claude": [
                 {"name": "landing-page", "project": "landing-page", "status": "busy", "since": now - 140},
                 {"name": "api", "project": "api", "status": "idle", "since": now - 420},
@@ -535,7 +430,6 @@ class Feed:
             "mailNew": sum(1 for m in mail if m["new"]),
             "apps": [{"app": a, "count": c}
                      for a, c in sorted(apps.items(), key=lambda kv: -kv[1])],
-            "paperclip": self.paperclip,
             "claude": self.claude_sessions,
         }
 
@@ -625,9 +519,10 @@ class Feed:
             pass
         GLib.timeout_add_seconds(30, self.refresh_claude)
         self.claude_sessions = self.read_claude()
-        threading.Thread(target=self.watch_desktop_notifications, daemon=True).start()
+        # Demo mode shows made-up data only, so it does not record mail.
+        if not self.config["demo"]:
+            threading.Thread(target=self.watch_desktop_notifications, daemon=True).start()
         threading.Thread(target=self.read_stdin, daemon=True).start()
-        threading.Thread(target=self.poll_paperclip, daemon=True).start()
         self.refresh()
         self.loop.run()
 

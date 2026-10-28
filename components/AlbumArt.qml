@@ -12,6 +12,7 @@ Rectangle {
   clip: true
 
   Text {
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     visible: art.status !== Image.Ready
     text: "\u{F075A}"

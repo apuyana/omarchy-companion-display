@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Lyrics lookup for the Omarchy companion display.
 
-Usage: companion-lyrics ARTIST TITLE [ALBUM] [DURATION_SECONDS]
+Usage: COMPANION_LYRICS_TRACK='{"artist": ..., "title": ..., "album": ...,
+       "duration": SECONDS}' companion-lyrics
+
+The track comes in the environment rather than in argv so other local users
+cannot see what is playing in the process list.
 
 Looks the track up on LRCLIB (https://lrclib.net), a free lyrics database
 that needs no account, and prints one JSON object on stdout:
@@ -106,21 +110,33 @@ def lookup(artist, title, album, duration):
     }
 
 
+def save(path, result):
+    # The cache reveals what you listen to: keep it private whatever the
+    # umask, and write atomically so an interrupted write leaves no bad entry.
+    for d in (os.path.dirname(CACHE_DIR), CACHE_DIR):
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        os.chmod(d, 0o700)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(result, f)
+    os.replace(tmp, path)
+
+
 def emit(artist, title, result):
     # Echo the track so the panel can drop answers for a song that already ended.
     print(json.dumps(dict(result, track=[artist, title])))
 
 
 def main():
-    if len(sys.argv) < 3:
+    try:
+        track = json.loads(os.environ.get("COMPANION_LYRICS_TRACK", ""))
+        artist, title = str(track.get("artist", "")), str(track["title"])
+        album = str(track.get("album", ""))
+        duration = float(track.get("duration") or 0)
+    except (ValueError, KeyError, TypeError, AttributeError):
         print(__doc__.strip(), file=sys.stderr)
         sys.exit(2)
-    artist, title = sys.argv[1], sys.argv[2]
-    album = sys.argv[3] if len(sys.argv) > 3 else ""
-    try:
-        duration = float(sys.argv[4]) if len(sys.argv) > 4 else 0
-    except ValueError:
-        duration = 0
 
     key = hashlib.sha1("\0".join([artist, title, album]).lower().encode()).hexdigest()
     path = os.path.join(CACHE_DIR, key + ".json")
@@ -140,9 +156,7 @@ def main():
         emit(artist, title, {"found": False, "error": True})
         return
 
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(result, f)
+    save(path, result)
     emit(artist, title, result)
 
 

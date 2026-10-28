@@ -19,22 +19,30 @@
   "ignoreApps": [],
   "mailHistory": 30,
   "mailKeepHours": 0,
+  "lyricsPlayers": [
+    "Spotify",
+    "ncspot",
+    "Tidal-hifi",
+    "Cider",
+    "Feishin",
+    "Supersonic",
+    "Strawberry",
+    "Clementine",
+    "Rhythmbox",
+    "Lollypop",
+    "Amberol",
+    "Elisa",
+    "Audacious",
+    "Quod Libet",
+    "DeaDBeeF"
+  ],
   "modules": {
     "clock": true,
     "mail": true,
     "chats": true,
     "apps": true,
     "player": true,
-    "claude": true,
-    "paperclip": false
-  },
-  "paperclip": {
-    "url": "",
-    "companyId": "",
-    "name": "",
-    "tokenFile": "~/.config/omarchy/companion-display-paperclip.token",
-    "interval": 60,
-    "maxIssues": 4
+    "claude": true
   },
   "claude": {
     "doneMinutes": 15,

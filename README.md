@@ -15,7 +15,6 @@ It turns a spare screen into a quiet, glanceable dashboard. Every section is opt
 | Mail | A mail client that posts desktop notifications, and/or a mail app on your phone | New-mail counter and the latest mails with sender, subject and preview |
 | Phone notifications | [KDE Connect](https://kdeconnect.kde.org/) paired with your phone | Total count per app |
 | Chats | KDE Connect | WhatsApp, Telegram, Signal… grouped by chat with the latest message |
-| Paperclip | A [Paperclip](https://github.com/paperclipai/paperclip) instance and a board API key | Task counts, agent availability, latest blocked and in-review tasks |
 | Claude Code | [Claude Code](https://claude.com/claude-code) | Sessions working, done, waiting or idle, plus usage limits |
 | Player | Any MPRIS player (Spotify, browsers, your phone through KDE Connect) | Now playing with controls, and a full-screen player |
 | Lyrics | Internet access ([LRCLIB](https://lrclib.net), no account) | Synced lyrics that follow the song, in a panel or in the full player |
@@ -28,7 +27,7 @@ Burn-in care is built in: a dark palette with no white areas, a slow pixel shift
 
 - Omarchy with the Quickshell-based shell (plugin support)
 - Python 3 with PyGObject (ships with Omarchy)
-- Optional: `kdeconnect` paired with your phone, Claude Code, a Paperclip instance
+- Optional: `kdeconnect` paired with your phone, Claude Code
 
 ## Install
 
@@ -48,11 +47,11 @@ It is designed for a secondary monitor. With a single monitor it still works, as
 - **Mail counter or mail section**: opens your default mail client and marks every mail as seen.
 - **Chats section**: opens your chat app (WhatsApp web by default).
 - **A chat or a mail**: hover it and press ✕ to dismiss it. Phone notifications are dismissed on the phone too.
+- **Clear all**: hover the chats or mail section and press the broom in its header, then press "Clear all?" within three seconds to dismiss every chat or mail at once (on the phone too).
 - **Desktop mail notifications**: dismissing one while it is still on screen (or the mail app closing it) also removes the mail from the panel. Ones that time out stay; see `mailKeepHours`.
-- **Paperclip task**: opens it in the browser.
 - **Claude bar**: the icon opens Claude Desktop; the rest of the bar expands the list of every session.
 - **Player bar**: the buttons control playback, the expand button switches to a full player, and the rest of the bar opens your player app (Spotify by default).
-- **Lyrics**: the lyrics button (lines with a music note) opens a lyrics panel above the player bar (about a third of the screen), or shows them in place of the album art in the full player. Synced lyrics follow the song. Live and remastered versions fall back to the plain song title; live versions show unsynced lyrics, since studio timings drift. If the service is down, the panel tries again every minute. They come from [LRCLIB](https://lrclib.net), a free lyrics database that needs no account, are fetched only while the panel is open, and are cached under `~/.cache/omarchy-companion-display/lyrics`.
+- **Lyrics**: the lyrics button (lines with a music note) opens a lyrics panel above the player bar (about a third of the screen), or shows them in place of the album art in the full player. Synced lyrics follow the song. Live and remastered versions fall back to the plain song title; live versions show unsynced lyrics, since studio timings drift. If the service is down, the panel tries again every minute. They come from [LRCLIB](https://lrclib.net), a free lyrics database that needs no account, are fetched only while the panel is open and only for the music players in `lyricsPlayers`, and are cached under `~/.cache/omarchy-companion-display/lyrics`.
 
 **Idle mode** starts after `idleSeconds` without news or mouse movement over the panel. It wakes up on a new chat, mail or phone notification, when Claude Code finishes its last working session, or when you move the mouse over it.
 
@@ -66,8 +65,8 @@ It is designed for a secondary monitor. With a single monitor it still works, as
 | `locale` | `en_US` | Locale for the date |
 | `dateFormat` | `dddd, MMMM d` | Qt date format under the clock |
 | `idleSeconds` | `300` | Seconds without news before idle mode |
-| `privacy` | `false` | Hide message and mail text and Paperclip task titles; show only senders, task ids and counts |
-| `demo` | `false` | Show made-up data instead of yours, for screenshots or to try the panel out |
+| `privacy` | `false` | Hide message text and Claude session names; mails show only the app, time and counts, chats only the chat name |
+| `demo` | `false` | Show made-up data instead of yours, for screenshots or to try the panel out; no desktop mail is recorded meanwhile |
 | `hideBar` | `false` | Cover the Omarchy bar on this monitor with a black strip |
 | `chatApps` | WhatsApp, Telegram, Signal… | Phone apps shown as chats |
 | `mailApps` | your default mail client | Desktop apps whose notifications count as mail |
@@ -75,18 +74,18 @@ It is designed for a secondary monitor. With a single monitor it still works, as
 | `ignoreApps` | `[]` | Phone apps to leave out |
 | `mailHistory` | `30` | Desktop mails kept |
 | `mailKeepHours` | `0` | Remove desktop mails older than this many hours once they are seen (after you click the mail section); `0` keeps them until you dismiss them |
+| `lyricsPlayers` | common music players | Players allowed to look up lyrics, by name (as shown in the player bar) or desktop entry, case-insensitive. The default covers Spotify, ncspot, Tidal-hifi, Cider, Feishin, Supersonic, Strawberry, Clementine, Rhythmbox, Lollypop, Amberol, Elisa, Audacious, Quod Libet and DeaDBeeF. Other players, such as browser tabs, VLC or mpv, never send their titles to LRCLIB and hide the lyrics button. `[]` allows every player |
 | `launch` | see below | Command run when clicking `mail`, `chats`, `claude` or `player`; `[]` disables the click |
-| `paperclip` | `{}` | Paperclip instance, see below |
 | `claude.expanded` | `false` | Start with the Claude session list open |
 | `claude.doneMinutes` | `15` | Minutes a finished session shows as "done" before it turns idle |
-| `modules` | all `true` | Turn sections off: `clock`, `mail`, `apps`, `chats`, `paperclip`, `claude`, `player` |
+| `modules` | all `true` | Turn sections off: `clock`, `mail`, `apps`, `chats`, `claude`, `player` |
 
 ### Turning sections off
 
-Sections hide on their own when their source is missing: chats and phone notifications without a paired KDE Connect device, Paperclip without a `paperclip.url`, Claude without any Claude Code sessions or usage data. To hide a section you could use but don't want, set it to `false` under `modules`:
+Sections hide on their own when their source is missing: chats and phone notifications without a paired KDE Connect device, Claude without any Claude Code sessions or usage data. To hide a section you could use but don't want, set it to `false` under `modules`:
 
 ```json
-"modules": { "paperclip": false, "claude": false }
+"modules": { "apps": false, "claude": false }
 ```
 
 ### Mail
@@ -102,31 +101,11 @@ By default the panel uses your system default mail client (the `mailto:` handler
 
 Phone mail apps are matched by `phoneMailApps`.
 
+Desktop mails are recognized by the app name each notification declares, like any notification widget does. Any program running as your user could post a notification under your mail client's name and it would show up as a mail. It is only ever shown as plain text, and clicking it just opens your mail client.
+
 ### Click commands
 
 `launch` maps each clickable section to a command. Defaults: `mail` opens the default mail client, `chats` opens WhatsApp web, `player` opens Spotify, `claude` opens Claude Desktop. `bin/open-default-app <mime-type>` opens or focuses the default app for any MIME type, for example `x-scheme-handler/http` for the browser.
-
-### Paperclip
-
-The section is off in the example config. Turn it on with `"modules": { "paperclip": true }` and add your instance:
-
-```json
-"paperclip": {
-  "url": "https://paperclip.example.com",
-  "companyId": "<company uuid>",
-  "name": "My Company",
-  "interval": 60,
-  "maxIssues": 4
-}
-```
-
-It needs a board API key in `~/.config/omarchy/companion-display-paperclip.token`. If the Paperclip CLI is logged in (`paperclipai auth login`), create one with:
-
-```bash
-~/.config/omarchy/plugins/apuyana.companion-display/bin/paperclip-create-key https://paperclip.example.com
-```
-
-The key is named `companion-display`, expires in a year by default, and is never printed. The panel only reads from Paperclip, but a board key carries your full board permissions, so keep the file private.
 
 ### Phone shows "Sensitive notification content hidden"
 
@@ -134,7 +113,7 @@ Android hides the content of some notifications from KDE Connect. On the phone, 
 
 ## How it works
 
-`bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, watches Claude Code's session files in `~/.claude/sessions`, polls Paperclip, and prints the combined state as JSON lines. `Panel.qml` runs it and draws the panel; it reads MPRIS and Omarchy's Claude usage record (`~/.local/state/omarchy/agents/usage/claude.json`) directly. Mail state lives in `~/.local/state/omarchy-companion-display/`.
+`bin/companion-feed` is a small Python process that reads KDE Connect over D-Bus, listens to desktop `Notify` calls for mail apps, watches Claude Code's session files in `~/.claude/sessions`, and prints the combined state as JSON lines. `Panel.qml` runs it and draws the panel; it reads MPRIS and Omarchy's Claude usage record (`~/.local/state/omarchy/agents/usage/claude.json`) directly. Mail state lives in `~/.local/state/omarchy-companion-display/` and the lyrics cache in `~/.cache/omarchy-companion-display/`, both readable only by you. Mail state keeps the text of mail notifications until you dismiss them (or `mailKeepHours` expires them). Only notifications from your mail apps are kept; the rest are ignored. All notification, mail, chat and lyrics text is drawn as plain text, so remote images or links in a message are never loaded.
 
 ## Uninstall
 
@@ -145,7 +124,7 @@ omarchy plugin remove apuyana.companion-display
 This removes the plugin but keeps your settings and data. To delete them too:
 
 ```bash
-rm -f ~/.config/omarchy/companion-display.json ~/.config/omarchy/companion-display-paperclip.token
+rm -f ~/.config/omarchy/companion-display.json
 rm -rf ~/.local/state/omarchy-companion-display ~/.cache/omarchy-companion-display
 ```
 

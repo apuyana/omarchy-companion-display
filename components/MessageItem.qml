@@ -39,6 +39,7 @@ Rectangle {
       radius: 22
       color: root.avatarColor
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: P.initials(root.title)
         color: root.avatarTextColor
@@ -57,6 +58,7 @@ Rectangle {
         Layout.fillWidth: true
         spacing: 12
         Text {
+          textFormat: Text.PlainText
           Layout.fillWidth: true
           text: root.title
           color: root.unread ? P.textStrong : P.textSoft
@@ -66,6 +68,7 @@ Rectangle {
           elide: Text.ElideRight
         }
         Text {
+          textFormat: Text.PlainText
           text: root.meta
           color: P.textMuted
           font.family: root.fontFamily
@@ -79,6 +82,7 @@ Rectangle {
           radius: 14
           color: dismissMouse.containsMouse ? P.track : "transparent"
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "\u{F0156}"
             color: dismissMouse.containsMouse ? P.textStrong : P.textMuted
@@ -96,6 +100,7 @@ Rectangle {
         }
       }
       Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
         visible: root.subject !== ""
         text: root.subject
@@ -106,6 +111,7 @@ Rectangle {
         elide: Text.ElideRight
       }
       Text {
+        textFormat: Text.PlainText
         Layout.fillWidth: true
         visible: root.preview !== ""
         text: root.preview

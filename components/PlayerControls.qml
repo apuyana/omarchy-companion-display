@@ -24,6 +24,7 @@ RowLayout {
     color: primary ? "#d0d0d4" : (mouse.containsMouse ? P.item : "transparent")
     opacity: enabledState ? 1 : 0.35
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: btn.glyph
       color: btn.primary ? P.background : "#a8a8b0"
